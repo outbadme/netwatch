@@ -19,8 +19,9 @@ surface is four read-only MCP helpers: `check_signature`, `hash_file`,
 A CLEAN verdict only *suppresses* the connection for 24 h and files a
 whitelist *proposal* — permanent whitelisting always goes through a human.
 
-**Tier 3** — a visible `claude --resume <session_id>` window that opens only
-on ALARM, Tier-2 timeout, or double failure. Human in the loop from there.
+**Tier 3** — a fresh interactive `claude` session in a visible pwsh window
+that opens only on ALARM, Tier-2 timeout, or double failure. The session id
+is informational only (D7, amended). Human in the loop from there.
 
 Design rationale and edge-case behavior: `ARCHITECTURE.md`, `DECISIONS.md`,
 `TIER2-CONTRACT.md`, `FAILURE-MATRIX.md` (F1-F24).

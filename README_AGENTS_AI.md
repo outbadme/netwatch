@@ -27,7 +27,9 @@ never in the repo, never in git):
                                 check-process-lineage
 - src/tier2/system-prompt.md    fixed Tier-2 prompt (loaded into
                                 --system-prompt as a string)
-- src/tier3/launch-tier3.ps1    visible claude --resume window on ALARM
+- src/tier3/launch-tier3.ps1    fresh interactive claude session in a
+                                visible pwsh window on ALARM (session id is
+                                informational only — D7, amended)
 - schemas/*.json                whitelist / config / escalation-packet /
                                 verdict contracts (JSON Schema 2020-12)
 - config/                       whitelist seed + config example;
