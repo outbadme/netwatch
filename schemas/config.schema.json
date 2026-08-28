@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "netwatch/config.schema.json",
+  "title": "netwatch Tier-1 configuration",
+  "type": "object",
+  "required": ["paths"],
+  "additionalProperties": false,
+  "properties": {
+    "sample_interval_sec": { "type": "integer", "minimum": 20, "maximum": 60, "default": 30 },
+    "debounce": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "min_samples": { "type": "integer", "default": 2 },
+        "min_age_sec": { "type": "integer", "default": 60 }
+      }
+    },
+    "tier2": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "min_interval_min": { "type": "integer", "default": 10 },
+        "wall_clock_cap_sec": { "type": "integer", "default": 180 },
+        "max_turns": { "type": "integer", "default": 25 },
+        "batch_cap": { "type": "integer", "default": 20 },
+        "sec_per_key_budget": { "type": "integer", "minimum": 0, "default": 30, "$comment": "per-key wall-clock budget: effective batch = min(batch_cap, floor(wall_clock_cap_sec/budget)); 0 disables the clamp (test seam)" },
+        "model": { "type": "string", "default": "sonnet" },
+        "claude_exe": { "type": "string", "default": "auto", "$comment": "'auto' = resolve claude via PATH at load" },
+        "claude_args_prefix": {
+          "type": "array", "items": { "type": "string" }, "default": [],
+          "$comment": "test seam: argv entries prepended before claude flags; production config omits it (tests point claude_exe at pwsh + a stub script)"
+        }
+      }
+    },
+    "suppression_ttl_hours": { "type": "integer", "default": 24 },
+    "classify": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "browser_attributed_ok": {
+          "description": "browser processes: any connection WITH domain attribution (sni/dns) is logged as clean (user-driven browsing churn, unwhitelistable domain set); connections WITHOUT attribution (raw-IP) stay escalatable",
+          "type": "array", "items": { "type": "string" },
+          "default": ["msedge", "msedgewebview2", "octium", "octo browser"]
+        },
+        "machine_notes": {
+          "description": "static context strings copied verbatim into every escalation packet",
+          "type": "array", "items": { "type": "string" }
+        }
+      }
+    },
+    "sni": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "tshark_exe": { "type": "string", "default": "C:\\Program Files\\Wireshark\\tshark.exe" },
+        "capture_ports": { "type": "array", "items": { "type": "integer" }, "default": [443, 8443] },
+        "http_ports": { "type": "array", "items": { "type": "integer" }, "default": [80], "description": "plaintext HTTP ports joined into the capture; Host header attributes CRL/OCSP-class traffic (source http-host)" },
+        "interfaces": { "type": "array", "items": { "type": "string" }, "default": [], "description": "tshark -i names; empty = auto-detect every Up adapter with a routable address" },
+        "interface_recheck": { "type": "boolean", "default": true, "description": "re-run interface detection every tick and rebind the capture when the set changes (VPN up/down)" },
+        "interface_settle_sec": { "type": "integer", "default": 60, "description": "a changed interface set must stay stable this long before the capture rebinds (adapter-flap debounce)" },
+        "blind_after_sec": { "type": "integer", "default": 600, "description": "a live capture child that produced no lines for this long is flagged degraded; 0 disables" },
+        "restart_backoff_sec": { "type": "array", "items": { "type": "integer" }, "default": [5, 30, 300] },
+        "max_restarts_before_degraded": { "type": "integer", "default": 5 }
+      }
+    },
+    "own_ip": {
+      "type": "object", "additionalProperties": false,
+      "required": ["recorded_static"],
+      "properties": {
+        "recorded_static": { "type": "array", "items": { "type": "string" }, "$comment": "documented always-excluded entries, e.g. 203.0.113.10" },
+        "redetect_interval_min": { "type": "integer", "default": 60 }
+      }
+    },
+    "retention_days": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "conn_logs": { "type": "integer", "default": 14 },
+        "op_logs": { "type": "integer", "default": 14 },
+        "escalations": { "type": "integer", "default": 90 },
+        "alarms": { "type": "integer", "default": 365 }
+      }
+    },
+    "reputation_quota": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "vt_per_day": { "type": "integer", "default": 400 },
+        "vt_per_min": { "type": "integer", "default": 4 },
+        "abuseipdb_per_day": { "type": "integer", "default": 900 }
+      }
+    },
+    "paths": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state_root", "code_root"],
+      "properties": {
+        "state_root": { "type": "string", "default": "%LOCALAPPDATA%\\netwatch" },
+        "code_root": { "type": "string" },
+        "whitelist": { "type": "string", "default": "<code_root>\\config\\whitelist.json" }
+      }
+    }
+  }
+}

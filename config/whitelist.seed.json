@@ -1,0 +1,298 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "tailscale",
+      "match": {
+        "domain_suffixes": [
+          "tailscale.com",
+          "tailscale.io"
+        ],
+        "processes": [
+          "tailscaled",
+          "tailscale-ipn"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "Manual investigation 2026-08-26: Tailscale relay/coordination incl. DERP relays confirmed legitimate.",
+      "notes": "Tailnet-internal traffic (100.64.0.0/10) is excluded from external lookups globally. 2026-08-28 (operator decision): DERP domain attribution proven live (derp26b.tailscale.com via SNI after the egress-rebind fix); the temporary /32 entry tailscale-derp-observed-ips removed as redundant - the domain suffixes here cover DERP."
+    },
+    {
+      "id": "anthropic-claude-cli",
+      "match": {
+        "domain_suffixes": [
+          "anthropic.com",
+          "claude.ai",
+          "claude.com"
+        ],
+        "processes": [
+          "claude",
+          "node"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "claude.exe (C:\\Users\\YOURNAME\\.local\\bin\\claude.exe) and node.exe children -> Anthropic API edges (160.79.104.10, 98.91.39.95, 3.173.21.63, 66.33.60.35 and others); anycast/multi-provider IP churn on this destination is expected and not suspicious.",
+      "notes": "Domain match deliberately, never IP: Anthropic edge IPs churn."
+    },
+    {
+      "id": "kimi-pi-coding-agent",
+      "match": {
+        "domain_suffixes": [
+          "kimi.com"
+        ],
+        "processes": [
+          "node"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "pi-coding-agent (%APPDATA%\\npm\\node_modules\\@earendil-works\\pi-coding-agent, official nodejs node.exe, --provider kimi-coding) -> Cloudflare-fronted api.kimi.com (104.18.20-21.246 observed)."
+    },
+    {
+      "id": "microsoft-system",
+      "match": {
+        "domain_suffixes": [
+          "microsoft.com",
+          "windowsupdate.com",
+          "windows.com",
+          "msedge.net",
+          "azureedge.net",
+          "azurefd.net",
+          "office.com",
+          "office.net",
+          "live.com",
+          "bing.com",
+          "msn.com",
+          "trafficmanager.net",
+          "akamaized.net",
+          "msftconnecttest.com",
+          "data.microsoft.com"
+        ],
+        "processes": [
+          "svchost",
+          "explorer",
+          "msmpeng",
+          "mpdefendercoreservice",
+          "backgroundtaskhost",
+          "systemsettings",
+          "microsoftstartfeedprovider",
+          "sdxhelper",
+          "officeclicktorun",
+          "startmenuexperiencehost",
+          "textinputhost",
+          "taskhostw",
+          "dosvc",
+          "searchhost",
+          "runtimebroker"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "Hours of manual investigation 2026-08-26: listed Microsoft processes -> Microsoft/Azure/Akamai ranges (4.208.x, 20.x, 40.x, 52.x, 150.171.x, 2.21.173.x, 23.x) confirmed legitimate. NotSigned on MSIX/AppX-packaged apps (e.g. MicrosoftStartFeedProvider) is expected: package-signed, not Authenticode-signed.",
+      "notes": "Deliberately NOT seeding broad Azure CIDRs (20.0.0.0/8 etc.) - attacker infra also lives in Azure. Unattributed MS-process connections into MSFT AS8075 will surface as residual once, get a Tier-2 CLEAN with ASN evidence, and can then be narrowly whitelisted by a human from the proposal."
+    },
+    {
+      "id": "microsoft-system-observed-cidrs",
+      "match": {
+        "cidrs": [
+          "4.208.0.0/16",
+          "150.171.0.0/16",
+          "2.21.173.0/24"
+        ],
+        "processes": [
+          "svchost",
+          "msmpeng",
+          "mpdefendercoreservice",
+          "dosvc",
+          "backgroundtaskhost",
+          "taskhostw"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "Narrow, specifically-observed Microsoft blocks from the 2026-08-26 investigation, for MS system traffic that resolves without usable domain attribution (connected-cache / DO peers).",
+      "notes": "Kept intentionally narrow; broad MS /8s rejected."
+    },
+    {
+      "id": "windows365-msrdc",
+      "match": {
+        "domain_suffixes": [
+          "wvd.microsoft.com",
+          "cloudpc.microsoft.com"
+        ],
+        "processes": [
+          "msrdc",
+          "windows365"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "MicrosoftCorporationII.Windows365 MSIX package; user's own Windows 365 / RDP usage confirmed."
+    },
+    {
+      "id": "windows365-rdp-gateway-ip",
+      "match": {
+        "cidrs": [
+          "198.51.100.13/32"
+        ],
+        "ports": [
+          3395
+        ],
+        "processes": [
+          "msrdc",
+          "windows365"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "198.51.100.13:3395 confirmed 2026-08-26 as the user's own Windows 365 RDP endpoint."
+    },
+    {
+      "id": "winget",
+      "match": {
+        "domain_suffixes": [
+          "github.com",
+          "githubusercontent.com",
+          "azureedge.net",
+          "microsoft.com",
+          "gstatic.com",
+          "googleapis.com"
+        ],
+        "processes": [
+          "winget"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "winget.exe -> Google/GitHub/MS CDN ranges during package search/install, confirmed 2026-08-26."
+    },
+    {
+      "id": "telegram",
+      "match": {
+        "domain_suffixes": [
+          "telegram.org",
+          "t.me"
+        ],
+        "cidrs": [
+          "149.154.160.0/20"
+        ],
+        "processes": [
+          "telegram"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "149.154.160.0/20 is Telegram's official, publicly documented datacenter range; most Telegram traffic has no SNI/DNS attribution, hence the CIDR entry."
+    },
+    {
+      "id": "tailscale-inbound-rdp-own-iphone",
+      "match": {
+        "cidrs": [
+          "100.64.0.21/32"
+        ],
+        "local_ports": [
+          3389
+        ],
+        "processes": [
+          "svchost"
+        ],
+        "direction": "inbound"
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-26T00:00:00Z",
+      "evidence": "svchost listening on 100.64.0.10:3389 receiving from 100.64.0.21 = user's own iPhone ('personal iPhone' in tailscale status, same tailnet), confirmed 2026-08-26.",
+      "notes": "Any OTHER tailnet peer hitting 3389 stays residual -> escalates (immediate inbound trigger)."
+    },
+    {
+      "id": "deepseek-pi-agent",
+      "match": {
+        "domain_suffixes": [
+          "deepseek.com"
+        ],
+        "processes": [
+          "node"
+        ],
+        "ports": [
+          443
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-27T18:36:06Z",
+      "evidence": "pi-coding-agent --provider deepseek (node PID 2556) to 3.173.21.63:443 = api.deepseek.com (CloudFront d3bbv8sr76az5s.cloudfront.net). Verified 2026-08-27: DNS matches, VT reputation 0 (1/91 malicious - shared-edge noise), AbuseIPDB 51 weak signal. No SNI/DNS attribution because the connection predates netwatch start (17h+ keep-alive) - cold-start attribution gap, not ECH.",
+      "notes": "3.173.21.63 is a CloudFront edge for api.deepseek.com; edges churn - domain match only, never IP."
+    },
+    {
+      "id": "octo-browser",
+      "match": {
+        "domain_suffixes": [
+          "octobrowser.net"
+        ],
+        "domains": [
+          "legalize.cc"
+        ],
+        "processes": [
+          "octium",
+          "octo browser"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-08-27T23:30:00Z",
+      "evidence": "Operator's own antidetect browser (Octo Browser; octium is its engine process). Live alarms 20260827-140005/141024 resolved by the duty agent 2026-08-27: app.octobrowser.net is the vendor backend, legalize.cc an operator-confirmed destination. Attributed traffic only - raw-IP flows still escalate."
+    },
+    {
+      "id": "svchost-safebrowsing-google",
+      "match": {
+        "cidrs": [
+          "142.251.210.131/32"
+        ],
+        "processes": [
+          "svchost"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-27T19:16:46Z",
+      "evidence": "Defender Network Protection / SmartScreen Safe Browsing via winhttp from svchost to Google (142.251.0.0/16 = Google). EnableNetworkProtection=1 confirmed. Known benign Win11 pattern. Verified 2026-08-27 by duty agent."
+    },
+    {
+      "id": "barscryptor-oschadbank-ca-http",
+      "match": {
+        "domains": [
+          "ca.oschadbank.ua"
+        ],
+        "processes": [
+          "barscryptor cloud client"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-28T18:15:43Z",
+      "evidence": "Proposed by tier3 verdict 20260828-114114-911; approved by operator 2026-08-28 (his bank token CA endpoints). http-host attribution confirmed via forward DNS: ca.oschadbank.ua -> ayzqo76.impervadns.net -> 45.223.20.127 = observed IP. Client ships oschad_ca_root.cer and the IIT UA PKI stack; port 80 to a ca. host is standard CRL/OCSP per RFC 5280/6960. Domain match, never IP: Imperva edges rotate.",
+      "notes": "Binary integrity re-verified 17:52Z (Kimi, operator-side): sha256 86a819cd51edd819c34128fa4f8c344ab74faea90d8c1ba5aeaad6c168967179 unchanged since the 08:42 baseline; NotSigned is expected per machine_notes."
+    },
+    {
+      "id": "barscryptor-nbu-czo-http",
+      "match": {
+        "domains": [
+          "zc.bank.gov.ua"
+        ],
+        "processes": [
+          "barscryptor cloud client"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-28T18:15:43Z",
+      "evidence": "Proposed by tier3 verdict 20260828-114114-911; approved by operator 2026-08-28. http-host attribution confirmed via forward DNS: zc.bank.gov.ua -> 172.65.90.64/.65 (observed IP in answer set), Cloudflare AS13335. bank.gov.ua = National Bank of Ukraine; client ships KNEDP-CZO.p7b trust anchors for that certification centre. Port 80 is the standard CRL/CA-certificate transport. Domain match, never IP: Cloudflare edges rotate.",
+      "notes": "Same binary-integrity re-verification as barscryptor-oschadbank-ca-http."
+    }
+  ]
+}

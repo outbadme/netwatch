@@ -1,0 +1,11 @@
+# runtime/secret artifacts never tracked
+node_modules/
+.env
+# operator-dropped installer binaries (verified by install/verify-packages.ps1)
+install/packages/
+# operator's archived flag copies (on-disk only)
+PRODUCTION-DONE.flag.bak-*
+# machine-specific generated files (init-deploy.ps1 creates them)
+config/netwatch.config.json
+src/tier2/mcp-config.json
+tmp-deploy-verify/

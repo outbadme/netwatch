@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "netwatch/whitelist.schema.json",
+  "title": "netwatch domain-based whitelist",
+  "type": "object",
+  "required": ["version", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["id", "match", "added_by", "added_at", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "domains": {
+              "description": "exact FQDN matches, lowercase, no trailing dot",
+              "type": "array", "items": { "type": "string" }
+            },
+            "domain_suffixes": {
+              "description": "matches domain == suffix or domain endswith '.'+suffix",
+              "type": "array", "items": { "type": "string" }
+            },
+            "cidrs": {
+              "description": "IPv4/IPv6 CIDR; only for traffic with no domain (e.g. Telegram DC range, Tailscale-internal)",
+              "type": "array", "items": { "type": "string" }
+            },
+            "processes": {
+              "description": "owning process names (no .exe, lowercase); empty/absent = any process",
+              "type": "array", "items": { "type": "string" }
+            },
+            "ports": {
+              "description": "remote ports; absent = any",
+              "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            },
+            "local_ports": {
+              "description": "local ports; mainly for inbound entries (e.g. RDP 3389)",
+              "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            },
+            "direction": {
+              "description": "restrict to outbound/inbound; absent = outbound",
+              "enum": ["outbound", "inbound", "any"]
+            }
+          }
+        },
+        "added_by": { "enum": ["seed", "human", "tier3"] },
+        "added_at": { "type": "string", "format": "date-time" },
+        "evidence": {
+          "description": "why this is legitimate (investigation reference)",
+          "type": "string", "minLength": 1
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

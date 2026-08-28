@@ -1,0 +1,71 @@
+{
+  "sample_interval_sec": 30,
+  "debounce": {
+    "min_samples": 2,
+    "min_age_sec": 60
+  },
+  "tier2": {
+    "min_interval_min": 10,
+    "wall_clock_cap_sec": 180,
+    "max_turns": 25,
+    "batch_cap": 20,
+    "sec_per_key_budget": 45,
+    "model": "sonnet",
+    "claude_exe": "%USERPROFILE%\\.local\\bin\\claude.exe"
+  },
+  "suppression_ttl_hours": 24,
+  "classify": {
+    "browser_attributed_ok": [
+      "msedge",
+      "msedgewebview2",
+      "octium",
+      "octo browser"
+    ],
+    "machine_notes": [
+      "EDIT ME: describe this machine so Tier 2 judges in context, e.g.: developer workstation; language toolchains, VPN clients and packet tools are the normal toolset.",
+      "EDIT ME: list unsigned-but-trusted vendor apps, e.g.: ExampleBackup client (installed under Program Files) is the owner's own tool; NotSigned is expected."
+    ]
+  },
+  "sni": {
+    "tshark_exe": "C:\\Program Files\\Wireshark\\tshark.exe",
+    "capture_ports": [
+      443,
+      8443
+    ],
+    "http_ports": [
+      80
+    ],
+    "interfaces": [],
+    "interface_recheck": true,
+    "interface_settle_sec": 60,
+    "blind_after_sec": 600,
+    "restart_backoff_sec": [
+      5,
+      30,
+      300
+    ],
+    "max_restarts_before_degraded": 5
+  },
+  "own_ip": {
+    "recorded_static": [
+      "203.0.113.10"
+    ],
+    "redetect_interval_min": 60
+  },
+  "retention_days": {
+    "conn_logs": 14,
+    "op_logs": 14,
+    "escalations": 90,
+    "alarms": 365
+  },
+  "reputation_quota": {
+    "vt_per_day": 400,
+    "vt_per_min": 4,
+    "abuseipdb_per_day": 900
+  },
+  "paths": {
+    "state_root": "%LOCALAPPDATA%\\netwatch",
+    "code_root": "C:\\tools\\netwatch",
+    "whitelist": "C:\\tools\\netwatch\\config\\whitelist.json"
+  }
+}

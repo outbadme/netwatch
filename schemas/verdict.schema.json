@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "netwatch/verdict.schema.json",
+  "title": "netwatch Tier-2 -> Tier-1 verdict (the 'result' text of claude's JSON envelope)",
+  "type": "object",
+  "required": ["verdict", "connections", "summary"],
+  "properties": {
+    "verdict": { "enum": ["CLEAN", "ALARM"] },
+    "connections": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "assessment", "reasons", "evidence"],
+        "properties": {
+          "key": { "type": "string", "description": "must echo a key from the packet" },
+          "assessment": { "enum": ["clean", "suspicious"] },
+          "reasons": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "evidence": { "type": "array", "items": { "type": "string" } },
+          "proposed_whitelist_entry": {
+            "type": "object",
+            "description": "proposal only; Tier 1 writes it to proposals.jsonl, never applies it. Deliberately permissive HERE: the launcher separately validates every proposal against whitelist.schema.json and drops invalid ones without failing the verdict."
+          }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  },
+  "$comment": "Enforced by invoke-tier2.ps1 via Test-Json (2026-08-28, reviewer M1: the previous cross-file $ref made the schema unparseable and it was never applied). Unknown EXTRA fields are tolerated on purpose - a paid retry costs more than ignoring a harmless field; unknown KEYS and key-set mismatches are still rejected by Test-VerdictShape, which additionally enforces: verdict==ALARM if any assessment==suspicious; every packet key answered."
+}
