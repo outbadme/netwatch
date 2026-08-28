@@ -55,7 +55,10 @@ the same benign residual — noise and quota burn).
 - **Tier-2 spacing: >= 10 min between launches** (config
   `tier2.min_interval_min`), EXCEPT immediate triggers: (a) unclassified
   inbound connection, (b) residual process whose image file is gone from
-  disk. Batch cap: 20 keys per packet, overflow flagged in the packet.
+  disk. Batch cap: EFFECTIVE cap is `min(tier2.batch_cap (default 20),
+  floor(tier2.wall_clock_cap_sec / tier2.sec_per_key_budget))` keys per
+  packet (2026-08-27 clamp, `Get-EffectiveBatchCap`; live config budget 45
+  -> cap 4); overflow flagged in the packet.
 - Whitelist-matched CDN churn never reaches the residual queue at all
   (domain matching), so it cannot invoke Tier 2 — the specific failure
   mode the GOAL calls out.

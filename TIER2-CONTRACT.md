@@ -33,8 +33,8 @@ in the scripts at all).
 - Validation: absolute path, file exists, not under Downloads.
 - Action: `pwsh -File check-signature.ps1 <path>` ->
   `Get-AuthenticodeSignature` (pwsh 7 mandatory — the PS 5.1 silent-fail
-  bug is exactly here) + signer chain subjects + timestamp.
-- Output: `{ status, signer_chain[], is_os_binary, msix_context }`.
+  bug is exactly here) + signer chain subjects.
+- Output: `{ path, status, status_msg, signer_chain[], is_os_binary, msix_context }`.
   `msix_context: true` when the path is under `WindowsApps`/an MSIX
   package root — the prompt tells the model `NotSigned` is EXPECTED there
   (package-signed, not Authenticode-signed; GOAL baseline).
