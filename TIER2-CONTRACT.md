@@ -5,6 +5,20 @@ are four read-only MCP tools. Containment principle: destructive capability
 does not exist anywhere in the surface; a permission filter over an open
 shell was explicitly rejected in the GOAL (alias/IEX/reflection bypasses).
 
+## 0. Cost model (clarified 2026-08-28)
+
+Tier 2 runs on the operator's claude.ai **subscription via OAuth token**.
+The `cost_usd` field in `*-stdout.json` envelopes is an API-equivalent
+estimate for accounting, NOT a real charge. The binding constraint is the
+subscription **session quota**: observed live on 2026-08-28, when HTTP 429
+"session limit" killed both Tier-2 attempts of two alarms (reason
+`tier2_failed` = analyzer never ran, not a finding). That quota is SHARED
+with the operator's interactive claude windows. Hence the standing rule:
+live Tier-2 runs outside the monitor's own escalation flow need the
+operator's go — for quota, not for dollars. The reputation-API quotas
+(AbuseIPDB/VT, `state/repquota.json`) are real external limits and
+unrelated to this.
+
 ## 1. Tool surface (MCP server `netwatch`, stdio, Node)
 
 Tool names as seen by the model: `mcp__netwatch__<tool>`.

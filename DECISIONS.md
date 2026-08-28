@@ -59,6 +59,10 @@ the same benign residual — noise and quota burn).
 - Whitelist-matched CDN churn never reaches the residual queue at all
   (domain matching), so it cannot invoke Tier 2 — the specific failure
   mode the GOAL calls out.
+- Cost note (2026-08-28): Tier 2 runs on the claude.ai subscription
+  (OAuth token); envelope `cost_usd` is an API-equivalent estimate, not a
+  real charge. What spacing and the batch cap actually protect is the
+  shared session quota — TIER2-CONTRACT §0.
 
 ## D3 — 3-minute cap implementation: `System.Diagnostics.Process` + `Kill($true)`
 
