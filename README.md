@@ -57,8 +57,11 @@ reputation answers `no_key`).
 ## What it downloads / what leaves the machine
 
 - Downloads: winget packages above + npm deps for the local MCP server. Tier 2
-  spends Claude API usage per escalation (typically a few cents; hard-bounded
-  by the 3-min cap and 25-turn limit).
+  runs on whatever your `claude` CLI login uses: with a Claude **subscription**
+  there is no per-token bill — escalations draw from the same session quota as
+  your interactive Claude windows; with an API key each escalation costs
+  typically a few cents. Either way it is hard-bounded by the 3-min wall-clock
+  cap, the 25-turn limit and the >= 10-min spacing between runs.
 - Network egress at runtime: Team Cymru DNS TXT lookups for unclassified IPs;
   optional AbuseIPDB/VirusTotal lookups (Tier-2 only, free-tier quota-guarded:
   900/day, 400/day + 4/min). Your own public IP, RFC1918, CGNAT, loopback and
@@ -87,16 +90,21 @@ Code and state are strictly separated. Everything mutable is under
 | `alarms/` | ALARM records + open markers | 365 days |
 | `state/` | suppression cache, proposals, own-IP, quota ledger, DPAPI keys | working state |
 
-Week 1: review `state\proposals.jsonl` (entries marked `double_clean` first)
-and promote good ones into `whitelist.json` by hand — suppression alone
-expires every 24 h. The seed whitelist is deliberately narrow; expect a small
-burst of one-time CLEANs until it learns your environment.
+**Expect the first days to be noisy — that is the design, not a bug.** The
+seed whitelist is deliberately narrow, so until it learns the regular cast of
+your traffic (your browsers, updaters, agents, VPNs) Tier 2 will produce a
+burst of one-time CLEAN verdicts and proposals. Week 1 routine: review
+`state\proposals.jsonl` (entries marked `double_clean` first) and promote the
+good ones into `whitelist.json` by hand — suppression alone expires every
+24 h. After that, silence becomes the normal state.
 
 ## Honest limitations
 
-- SNI is captured only on ports 443/8443 (`sni.capture_ports`,
-  config-extendable); TLS on odd ports rides on DNS attribution or escalates
-  unattributed.
+- SNI is captured only on ports 443/8443 (`sni.capture_ports`) and plaintext
+  HTTP Host headers only on `sni.http_ports` (default 80 — attributes
+  CRL/OCSP-class traffic as source `http-host`; the header is written by the
+  client, so it is weaker evidence than SNI). Both are config-extendable;
+  other ports ride on DNS attribution or escalate unattributed.
 - If both attribution sources go down, a flood guard stops Tier-2 spam and
   raises one urgent toast instead.
 - Deleting an alarm's `*-open.marker` file is how a human closes an
