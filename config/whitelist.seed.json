@@ -343,6 +343,25 @@
       "added_at": "2026-08-29T10:20:14Z",
       "evidence": "Re-approved by operator 2026-08-29 after quarantine re-verification. Port 7680 is the documented DoSvc-exclusive Delivery Optimization P2P port. Live-proven three times (20260829 alarms): pid 3756 = DoSvc via tasklist /svc and Win32_Service; Get-DeliveryOptimizationStatus showed DownloadMode=Internet with 71 peers during the 07:37Z investigation. Alarm keys were unestablished SynSent probes - no data transferred.",
       "notes": "Peer IPs are arbitrary internet nodes by design (P2P); the port+process pair is the stable signal. Does NOT cover MCC fetches on port 80 - separate question."
+    },
+    {
+      "id": "dosvc-mcc-content-dl-delivery",
+      "match": {
+        "domain_suffixes": [
+          "dl.delivery.mp.microsoft.com"
+        ],
+        "processes": [
+          "svchost",
+          "dosvc"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-29T19:16:51Z",
+      "evidence": "Operator-approved 2026-08-29. Matches the do-log CONTENT-ORIGIN domain (DO SourceURL host), never the cache endpoint. Verified sightings in this machine's DO records: 1d.tlu.dl.delivery.mp.microsoft.com (CacheHost 193.57.46.213, DO-journal-proven by tier-3 2026-08-28) and msedge.b.tlu.dl.delivery.mp.microsoft.com (CacheHost 193.57.46.231, live Get-DeliveryOptimizationStatus 2026-08-29). Suffix matcher is dot-anchored (classify.psm1:44). Port 80 + svchost/dosvc pins.",
+      "notes": "MCC endpoints rotate by GEO design; this entry follows the content origin, which is stable. Office C2R via DO (f.c2r.ts.cdn.office.net) is deliberately NOT covered - separate class, separate approval if it ever alarms."
     }
   ]
 }
