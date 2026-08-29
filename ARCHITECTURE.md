@@ -142,10 +142,14 @@ startup; if held, exit immediately.
    else DNS cache `(pid, raddr)` -> else DNS cache `(raddr)` -> else OS
    resolver cache `(raddr)` (`Get-DnsClientCache`, added 2026-08-27: works
    even when the capture is blind behind the VPN data-channel offload and
-   ETW missed the lookup) -> else none. Record attribution source
-   (`sni` / `http-host` / `dns-pid` / `dns-ip` / `dns-cache` / `none`) —
-   Tier 2/3 must know how solid the attribution is (`http-host` is
-   client-forgeable, weaker than `sni`).
+   ETW missed the lookup) -> else, for svchost/dosvc on port 80 only, the
+   Delivery Optimization records (`do-log`, added 2026-08-29, DECISIONS
+   D11: a CacheHost match means the endpoint is a Microsoft Connected
+   Cache node; those rotate, so the domain shown is the CONTENT origin
+   from the DO SourceURL) -> else none. Record attribution source
+   (`sni` / `http-host` / `dns-pid` / `dns-ip` / `dns-cache` / `do-log` /
+   `none`) — Tier 2/3 must know how solid the attribution is (`http-host`
+   is client-forgeable, weaker than `sni`).
 5. **Classify** against `whitelist.json` (domain-suffix match first, then
    CIDR entries, optional process/port/direction constraints — see
    `schemas/whitelist.schema.json`). Matched -> one line in
@@ -271,7 +275,7 @@ alone).
 
 | Schema | Producer -> Consumer | File |
 |---|---|---|
-| `whitelist.schema.json` | human/seed -> Tier 1 | `config/whitelist.json` |
+| `whitelist.schema.json` | human/seed -> Tier 1 | repo seed `config/whitelist.seed.json`; live `paths.whitelist` |
 | `config.schema.json` | human -> Tier 1 | `config/netwatch.config.json` |
 | `escalation-packet.schema.json` | Tier 1 -> Tier 2 (stdin + file) | `escalations/*-packet.json` |
 | `verdict.schema.json` | Tier 2 -> Tier 1 (stdout) | `escalations/*-verdict.json` |

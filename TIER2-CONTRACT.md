@@ -106,7 +106,10 @@ Packet JSON (schema `schemas/escalation-packet.schema.json`) is written to
 Attribution `source` values: `sni` (TLS ClientHello), `http-host`
 (plaintext HTTP Host header — client-forgeable, weaker than SNI; normal
 for port-80 CRL/OCSP fetches), `dns-pid`/`dns-ip` (live DNS ETW),
-`dns-cache` (OS resolver cache, ambient), `none`.
+`dns-cache` (OS resolver cache, ambient), `do-log` (remote IP matched a
+Delivery Optimization CacheHost record — a Microsoft Connected Cache
+endpoint; the domain is the CONTENT origin from the DO SourceURL, not the
+endpoint), `none`.
 
 ```
 & "<cfg.tier2.claude_exe>" `

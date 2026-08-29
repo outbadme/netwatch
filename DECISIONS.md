@@ -7,8 +7,10 @@ ARCHITECTURE.md.
 
 ## D1 — Whitelist schema and update/confirmation mechanism
 
-**Schema**: single JSON file `config/whitelist.json`, validated by
-`schemas/whitelist.schema.json`. Entry = match block (domain exact list,
+**Schema**: JSON file validated by `schemas/whitelist.schema.json`.
+The repo carries the SEED (`config/whitelist.seed.json`); the live file is
+`paths.whitelist` (default `%LOCALAPPDATA%\netwatch\whitelist.json`),
+seeded from the repo file at deploy. Entry = match block (domain exact list,
 domain suffix list, CIDR list, optional process names, optional ports) +
 provenance (added_by: seed|human|tier3, added_at, evidence text). Domain
 match is primary (survives CDN/edge IP churn — the GOAL's core lesson);
@@ -213,3 +215,31 @@ Operator request: investigation windows must not hang unattended.
   presence. The watchdog is a plain pwsh child, NOT a claude session — the
   PreToolUse jail hooks do not apply to it, which is exactly why IT (not
   the agent) can write to the Desktop, outside the jail roots.
+
+## D11 — do-log attribution: Connected Cache IP rotation defeated per-IP whitelisting (2026-08-29)
+
+Problem: DoSvc fetches Windows Update content over HTTP:80 from Microsoft
+Connected Cache (MCC) nodes whose IPs are assigned dynamically by the DO
+GEO service and ROTATE (193.57.46.213 on 08-28, 193.57.46.231 on 08-29).
+No SNI (plaintext), often no http.host in the capture window, no PTR —
+every rotation produced a `source: none` escalation of a benign class;
+per-IP whitelist entries were whack-a-mole, a /24 whitelist was rejected.
+
+Decision: a new attribution source `do-log`, consulted LAST in the chain
+(only when every other source is `none`) and ONLY for svchost/dosvc on
+port 80. If the connection's remote IP is recorded as a `CacheHost` in
+the machine's own Delivery Optimization records
+(`Get-DeliveryOptimizationStatus` — unelevated; `Get-DeliveryOptimizationLog`
+— admin, conservative parse), the IP is a Microsoft Connected Cache node
+and the connection is attributed to the CONTENT origin host from the
+record's SourceURL (e.g. `*.dl.delivery.mp.microsoft.com`) — never to the
+cache node itself. Fail-open to `none` on any evidence-source failure;
+results cached 10 min. The endpoint-vs-content distinction is taught to
+Tier 2 in the system prompt so the weaker endpoint identity is graded
+correctly.
+
+Rejected: a `193.57.46.0/24` whitelist entry (operator, 2026-08-29) —
+whitelisting an entire third-party hosting block for svchost:80, however
+narrow the process pin, permanently over-permits against a rotating
+assignment; the journal-based attribution is evidence, the whitelist
+would be faith.

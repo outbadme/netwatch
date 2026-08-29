@@ -15,7 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-foreach ($m in 'state', 'netutil', 'sampling', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast') {
+foreach ($m in 'state', 'netutil', 'sampling', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast', 'dolog') {
     Import-Module (Join-Path $PSScriptRoot "modules\$m.psm1") -Force
 }
 
@@ -163,6 +163,12 @@ try {
             foreach ($c in $sample) {
                 $att = Resolve-SniAttribution -Caches $sniCaches -Conn $c
                 if (-not $att) { $att = Resolve-DnsAttribution -Caches $dnsCaches -Conn $c }
+                if ($att.source -eq 'none') {
+                    # last resort for svchost/dosvc:80 raw-IP: the DO journal's
+                    # CacheHost records (MCC nodes rotate - DO-LOG-ATTRIBUTION)
+                    $dlAtt = Resolve-DoLogAttribution -Conn $c
+                    if ($dlAtt) { $att = $dlAtt }
+                }
                 $c.attribution_source = $att.source
                 $c.domain = $att.domain
 

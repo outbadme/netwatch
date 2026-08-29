@@ -85,7 +85,7 @@
           "required": ["source"],
           "additionalProperties": false,
           "properties": {
-            "source": { "enum": ["sni", "dns-pid", "dns-ip", "dns-cache", "http-host", "none"] },
+            "source": { "enum": ["sni", "dns-pid", "dns-ip", "dns-cache", "http-host", "do-log", "none"] },
             "domain": { "type": "string" },
             "rdns": { "type": "string", "description": "descriptive only; PTR is attacker-controllable" }
           }

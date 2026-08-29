@@ -39,8 +39,13 @@ the final JSON object.
   header — the client writes it itself, so it is weaker than SNI and must
   not be treated as proof of the true destination; `dns-pid`/`dns-ip` come
   from DNS lookups observed live; `dns-cache` from the OS resolver cache
-  (ambient, no process binding). Port-80 `http-host` traffic to CRL/OCSP
-  endpoints is a normal certificate-revocation pattern.
+  (ambient, no process binding). `do-log` means the raw remote IP matched
+  a Delivery Optimization CacheHost record on this machine — the endpoint
+  is a Microsoft-assigned Connected Cache node (those ROTATE by design);
+  the domain shown is the CONTENT origin (DO SourceURL), not the endpoint.
+  For svchost/dosvc that is strong Microsoft-service context for port-80
+  fetches. Port-80 `http-host` traffic to CRL/OCSP endpoints is a normal
+  certificate-revocation pattern.
 
 ## Non-negotiable rules
 

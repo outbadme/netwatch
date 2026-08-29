@@ -242,23 +242,6 @@
       "evidence": "Operator's own antidetect browser (Octo Browser; octium is its engine process). Live alarms 20260827-140005/141024 resolved by the duty agent 2026-08-27: app.octobrowser.net is the vendor backend, legalize.cc an operator-confirmed destination. Attributed traffic only - raw-IP flows still escalate."
     },
     {
-      "id": "svchost-safebrowsing-google",
-      "match": {
-        "cidrs": [
-          "142.251.210.131/32"
-        ],
-        "processes": [
-          "svchost"
-        ],
-        "ports": [
-          80
-        ]
-      },
-      "added_by": "human",
-      "added_at": "2026-08-27T19:16:46Z",
-      "evidence": "Defender Network Protection / SmartScreen Safe Browsing via winhttp from svchost to Google (142.251.0.0/16 = Google). EnableNetworkProtection=1 confirmed. Known benign Win11 pattern. Verified 2026-08-27 by duty agent."
-    },
-    {
       "id": "barscryptor-oschadbank-ca-http",
       "match": {
         "domains": [
@@ -293,6 +276,73 @@
       "added_at": "2026-08-28T18:15:43Z",
       "evidence": "Proposed by tier3 verdict 20260828-114114-911; approved by operator 2026-08-28. http-host attribution confirmed via forward DNS: zc.bank.gov.ua -> 172.65.90.64/.65 (observed IP in answer set), Cloudflare AS13335. bank.gov.ua = National Bank of Ukraine; client ships KNEDP-CZO.p7b trust anchors for that certification centre. Port 80 is the standard CRL/CA-certificate transport. Domain match, never IP: Cloudflare edges rotate.",
       "notes": "Same binary-integrity re-verification as barscryptor-oschadbank-ca-http."
+    },
+    {
+      "id": "windows-webauthn-hybrid-cable",
+      "match": {
+        "domain_suffixes": [
+          "cable.auth.com",
+          "cable.ua5v.com"
+        ],
+        "processes": [
+          "svchost"
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-28T22:30:02Z",
+      "evidence": "Tier-3 verdicts 2026-08-28 (packets 220117-874, 221123-081): FIDO CTAP 2.2 hybrid transport (caBLE v2). cable.auth.com/cable.ua5v.com are kAssignedDomains in Chromium device/fido/cable/v2_handshake.cc (index 1 = Apple, 0 = Google). auth.com delegated to a-d.ns.apple.com; CNAME cable.push-apple.com.akadns.net -> 17.188.180.29. DNS ETW client PID 3472 = CryptSvc with the full platform WebAuthn stack (webauthn/noise/cryptngc/ngcksp + BLE). Correlates with www.icloud.com sign-in from msedge 22:01:30Z. Duty re-verified (Kimi): cryptsvc/webauthn/noise/cryptngc/ngcksp.dll all Valid, CN=Microsoft Windows, IsOSBinary=True.",
+      "notes": "Edge/Chrome delegate the hybrid ceremony to the platform, so the socket belongs to svchost (CryptSvc), not the browser. Domain match, never IP: Apple push pool rotates. No port pin: tunnel is wss/443 by spec but the domain set is the stable signal."
+    },
+    {
+      "id": "svchost-lencr-crl-http",
+      "match": {
+        "domains": [
+          "x2.c.lencr.org"
+        ],
+        "processes": [
+          "svchost"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-29T10:20:14Z",
+      "evidence": "Approved by operator 2026-08-29 after post-quarantine re-verification. Tier-3 verdict 20260829-073719-400 (CLEAN): lineage wininit->services->svchost(3472) live-verified; duty (Kimi): svchost.exe signature Valid CN=Microsoft Windows, observed IP 23.37.193.118 in current DNS answer. Let's Encrypt CRL over HTTP:80 is the standard cert-revocation pattern (RFC 5280/6960).",
+      "notes": "Domain match, never IP: lencr fronts are Akamai and rotate."
+    },
+    {
+      "id": "svchost-digicert-crl-http",
+      "match": {
+        "domains": [
+          "crl3.digicert.com"
+        ],
+        "processes": [
+          "svchost"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-29T10:20:14Z",
+      "evidence": "Approved by operator 2026-08-29 after post-quarantine re-verification. Same tier-3 verdict + duty checks: svchost.exe Valid (Microsoft Windows), observed IP 23.11.41.157 in current DNS answer. DigiCert CRL over HTTP:80 is standard.",
+      "notes": "Domain match, never IP."
+    },
+    {
+      "id": "svchost-delivery-optimization-peer",
+      "match": {
+        "processes": [
+          "svchost"
+        ],
+        "ports": [
+          7680
+        ]
+      },
+      "added_by": "human",
+      "added_at": "2026-08-29T10:20:14Z",
+      "evidence": "Re-approved by operator 2026-08-29 after quarantine re-verification. Port 7680 is the documented DoSvc-exclusive Delivery Optimization P2P port. Live-proven three times (20260829 alarms): pid 3756 = DoSvc via tasklist /svc and Win32_Service; Get-DeliveryOptimizationStatus showed DownloadMode=Internet with 71 peers during the 07:37Z investigation. Alarm keys were unestablished SynSent probes - no data transferred.",
+      "notes": "Peer IPs are arbitrary internet nodes by design (P2P); the port+process pair is the stable signal. Does NOT cover MCC fetches on port 80 - separate question."
     }
   ]
 }

@@ -108,9 +108,16 @@ while ($true) {
     }
     if ($IdleThresholdMs -gt 0 -and $idleSensorOk) {
         $idle = Get-InputIdleMs
-        if ($idle -ge $IdleThresholdMs) {
+        # Grace period (2026-08-29, first-live-run defect): the threshold
+        # counts CONTINUED inactivity AFTER the window appeared, not idle
+        # time that had already accumulated before it opened. Without the
+        # age check a window opening while the operator is away (idle
+        # already > threshold) was killed ~1 minute in, before claude even
+        # rendered - observed live at 08:19:55Z (61-second lifetime).
+        $ageMs = ([datetime]::UtcNow - [datetime]::Parse($OpenedUtc).ToUniversalTime()).TotalMilliseconds
+        if ($idle -ge $IdleThresholdMs -and $ageMs -ge $IdleThresholdMs) {
             & taskkill /PID $TargetPid /T /F 2>&1 | Out-Null
-            $null = Write-CloseReport -CloseReason "operator idle auto-close (idle ${idle}ms >= threshold ${IdleThresholdMs}ms)"
+            $null = Write-CloseReport -CloseReason "operator idle auto-close (idle ${idle}ms >= threshold ${IdleThresholdMs}ms, window age $([int]$ageMs)ms)"
             exit 0
         }
     }
