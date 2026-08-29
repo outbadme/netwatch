@@ -117,9 +117,39 @@ try {
         -EscState $escState -Tier3Script $tier3Stub
     $t3 = Get-Content $env:RECORD_TIER3_FILE -Raw | ConvertFrom-Json
     Assert-Equal 'tier2_failed' $t3.reason 'tier3 handoff reason tier2_failed'
+    # tier3 window lifecycle args flow with launcher defaults when the config
+    # has no tier3 section (TIER3-IDLE-CLOSE-20260828)
+    Assert-Equal 5 ([int]$t3.idle_close_min) 'tier3 idle_close_min default flows'
+    Assert-Equal 1100 ([int]$t3.window_width_px) 'tier3 window_width_px default flows'
+    Assert-Equal 750 ([int]$t3.window_height_px) 'tier3 window_height_px default flows'
+    Assert-Equal '' $t3.report_dir 'tier3 report_dir default flows (empty = Desktop)'
     Assert-True $queue2['procc|203.0.113.9|443'].pending 'failed keys suspended as pending'
     Remove-Item Env:STUB_COUNT_FILE
     Remove-Item $env:RECORD_TIER3_FILE
+
+    # --- quota exhaustion (429): no retry, no tier3, keys stay queued --------
+    # (live 2026-08-27: two attempts 2s apart both hit 429, then false-
+    # escalated as tier2_failed within seconds - fixed 2026-08-28)
+    $countFileQ = Join-Path $root 'stub-count-quota.txt'
+    $env:STUB_MODE = 'quota'
+    $env:STUB_COUNT_FILE = $countFileQ
+    Remove-Item $env:RECORD_TIER3_FILE -ErrorAction SilentlyContinue
+    $queueQ = @{}
+    $queueQ['procq|203.0.113.30|443'] = New-QueueEntry 'procq' '203.0.113.30' 443 $t0
+    $packetQ = Build-EscalationPacket -Keys @($queueQ.Keys) -Queue $queueQ -Config $cfg -Health $health -NowUtc ([datetime]::UtcNow.AddSeconds(8))
+    $resultQ = Invoke-Tier2Cycle -Packet $packetQ -Config $cfg -ConfigPath $cfgPath
+    Assert-Equal 'quota_exhausted' $resultQ.outcome 'HTTP 429 classified as quota_exhausted'
+    Assert-Equal 1 ([int](Get-Content $countFileQ)) 'no F2 retry against a live 429 (single invocation)'
+    $escStateQ = New-EscalationState
+    Complete-Tier2Outcome -Result $resultQ -Packet $packetQ -Config $cfg -Queue $queueQ `
+        -EscState $escStateQ -Tier3Script $tier3Stub
+    Assert-False (Test-Path $env:RECORD_TIER3_FILE) 'quota exhaustion never reaches tier3'
+    Assert-True $queueQ.ContainsKey('procq|203.0.113.30|443') 'key stays in queue (not evicted, not suppressed)'
+    Assert-False $queueQ['procq|203.0.113.30|443'].pending 'key not marked pending (no alarm suspension)'
+    Assert-Equal 1 $escStateQ.backoff_idx 'quota backoff advanced'
+    Assert-True ($escStateQ.next_allowed -gt [datetime]::UtcNow.AddMinutes(14)) 'first quota backoff ~15 min'
+    Remove-Item Env:STUB_COUNT_FILE
+    Remove-Item Env:STUB_MODE
 
     # --- timeout -> tier3 with reason tier2_timeout (F1) ---------------------
     $env:STUB_MODE = 'hang'

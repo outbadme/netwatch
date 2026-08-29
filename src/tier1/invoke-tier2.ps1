@@ -11,6 +11,12 @@
 #             3 = launch failure, 4 = bad/invalid output (caller retries once),
 #             5 = timeout with a PARTIAL salvaged verdict: verdict.json carries
 #                 the validated connections + uncovered_keys for Tier-3.
+#             6 = subscription session quota exhausted (HTTP 429 from the
+#                 claude.ai backend, live 2026-08-28: "session limit · resets
+#                 ...") - caller must NOT retry immediately (an instant retry
+#                 into an exhausted quota just burns the second F2 attempt on
+#                 the same 429) and must NOT escalate to Tier 3 (capacity, not
+#                 a finding).
 
 #Requires -Version 7
 param(
@@ -52,6 +58,26 @@ function Get-StdoutSnippet {
     $s = ($Text -replace '\s+', ' ').Trim()
     if ($s.Length -gt 200) { $s = $s.Substring(0, 200) }
     return $s
+}
+
+# Detects the claude.ai subscription session-quota rejection (live
+# 2026-08-28: two escalations each burned both F2 attempts on this in ~2s,
+# then falsely escalated to Tier 3 as tier2_failed - a 429 is a capacity
+# signal, never a verdict). Structured field first (api_error_status), text
+# match only as corroboration - never classify on text alone.
+function Test-QuotaExhausted {
+    param([string]$Text)
+    try { $envelope = $Text | ConvertFrom-Json } catch { return $null }
+    # empty/whitespace stdout (e.g. a crash before any output) converts to
+    # $null without throwing - StrictMode then faults on the property access
+    if ($null -eq $envelope) { return $null }
+    if (-not $envelope.PSObject.Properties['is_error'] -or -not $envelope.is_error) { return $null }
+    $status = if ($envelope.PSObject.Properties['api_error_status']) { $envelope.api_error_status } else { $null }
+    $resultText = [string]$envelope.result
+    if ($status -eq 429 -or $resultText -match '(?i)session limit') {
+        return "api_error_status=$status result=$(Get-StdoutSnippet $resultText)"
+    }
+    return $null
 }
 
 function ConvertFrom-Tier2Stdout {
@@ -271,8 +297,16 @@ $stdout = $stdoutTask.Result
 Set-Content -LiteralPath (Join-Path $outDir "$ts-stdout$attemptSuffix.json") -Value $stdout
 Set-Content -LiteralPath (Join-Path $outDir "$ts-stderr$attemptSuffix.txt")  -Value $stderrTask.Result
 
-# F2: a nonzero exit is a failed run even when stdout happens to parse
+# F2: a nonzero exit is a failed run even when stdout happens to parse -
+# UNLESS it is the subscription quota rejection (F2's blind retry is exactly
+# wrong there: two attempts 2s apart both hit 429 live 2026-08-27, then
+# false-escalated to Tier 3 as tier2_failed).
 if ($proc.ExitCode -ne 0) {
+    $quota = Test-QuotaExhausted -Text $stdout
+    if ($quota) {
+        Write-OpLog -Config $cfg -Level WARN -Message "tier2 quota exhausted (attempt $Attempt): $quota"
+        exit 6
+    }
     Write-OpLog -Config $cfg -Level WARN -Message "tier2 exited $($proc.ExitCode) (attempt $Attempt); stdout: $(Get-StdoutSnippet $stdout)"
     exit 4
 }

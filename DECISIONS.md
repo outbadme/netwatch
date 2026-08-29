@@ -188,3 +188,28 @@ only (exit 5): covered-clean keys get the normal CLEAN handling,
 covered-suspicious and uncovered keys go to Tier-3. Nothing that fails
 validation is ever treated as clean; an unparsable salvage keeps the
 original F1 path (exit 2).
+
+## D10 — Tier-3 window lifecycle: fixed placement + idle auto-close (2026-08-28)
+
+Operator request: investigation windows must not hang unattended.
+
+- Placement: the window opens at the TOP-RIGHT corner of the rightmost
+  screen (operator's right monitor) — visible, never in the way.
+  Implemented as SELF-positioning: the payload pwsh moves its own console
+  window (`tier3win.psm1`, GetConsoleWindow + MoveWindow), because under
+  the default Windows Terminal host a launched process has no
+  MainWindowHandle and the window cannot be found from outside. The
+  launcher therefore hosts the payload in `conhost.exe` explicitly.
+  Placement is cosmetic and fail-soft everywhere.
+- Idle auto-close: a hidden watchdog (`tier3/tier3-watchdog.ps1`, spawned
+  by the launcher) closes the window after `tier3.idle_close_min` (default
+  5, 0 disables) minutes of GLOBAL input idle (GetLastInputInfo).
+  Rationale for global idle over window focus (operator's pick): simple,
+  robust, and closes windows only when the operator has actually walked
+  away. A broken idle sensor fails OPEN (never closes).
+- On ANY close (idle or operator/agent ended) the watchdog writes a report
+  to `tier3.report_dir` (default `<Desktop>\netwatch`, created on demand):
+  UTC open/close, reason, keys, packet path, tier-2 session id, verdict
+  presence. The watchdog is a plain pwsh child, NOT a claude session — the
+  PreToolUse jail hooks do not apply to it, which is exactly why IT (not
+  the agent) can write to the Desktop, outside the jail roots.

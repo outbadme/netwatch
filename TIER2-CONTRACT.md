@@ -11,13 +11,23 @@ Tier 2 runs on the operator's claude.ai **subscription via OAuth token**.
 The `cost_usd` field in `*-stdout.json` envelopes is an API-equivalent
 estimate for accounting, NOT a real charge. The binding constraint is the
 subscription **session quota**: observed live on 2026-08-28, when HTTP 429
-"session limit" killed both Tier-2 attempts of two alarms (reason
-`tier2_failed` = analyzer never ran, not a finding). That quota is SHARED
-with the operator's interactive claude windows. Hence the standing rule:
-live Tier-2 runs outside the monitor's own escalation flow need the
-operator's go — for quota, not for dollars. The reputation-API quotas
-(AbuseIPDB/VT, `state/repquota.json`) are real external limits and
-unrelated to this.
+"session limit" killed both Tier-2 attempts of two alarms and (before the
+fix below) false-escalated them to Tier 3 with reason `tier2_failed` =
+analyzer never ran, not a finding. That quota is SHARED with the operator's
+interactive claude windows. Hence the standing rule: live Tier-2 runs
+outside the monitor's own escalation flow need the operator's go — for
+quota, not for dollars. The reputation-API quotas (AbuseIPDB/VT,
+`state/repquota.json`) are real external limits and unrelated to this.
+
+**Fixed 2026-08-28**: `invoke-tier2.ps1` detects the 429 (`is_error:true`,
+`api_error_status:429`, or `result` matching `/session limit/i`) on the
+nonzero-exit path and exits `6` instead of the generic `4`. `escalate.psm1`
+treats exit `6` as outcome `quota_exhausted`: no F2 retry (an instant retry
+into a live 429 cannot succeed - both 2026-08-27 attempts hit it 2s apart),
+no Tier-3 handoff, no queue change - the same keys are simply escalatable
+again once `EscState.next_allowed` passes. Backoff ladder 15/60/180 min
+(longer than F3's 10/30/60, since a session-quota reset runs hours, not
+minutes) with a non-urgent toast, logged WARN not ERROR.
 
 ## 1. Tool surface (MCP server `netwatch`, stdio, Node)
 

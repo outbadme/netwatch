@@ -14,6 +14,15 @@
         "min_age_sec": { "type": "integer", "default": 60 }
       }
     },
+    "tier3": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "idle_close_min": { "type": "integer", "minimum": 0, "default": 5, "$comment": "auto-close the tier-3 window after this many minutes of GLOBAL input idle (GetLastInputInfo); 0 disables. On close a report lands in report_dir" },
+        "window_width_px": { "type": "integer", "default": 1100 },
+        "window_height_px": { "type": "integer", "default": 750 },
+        "report_dir": { "type": "string", "default": "", "$comment": "empty = <Desktop>\\netwatch (created on demand)" }
+      }
+    },
     "tier2": {
       "type": "object", "additionalProperties": false,
       "properties": {

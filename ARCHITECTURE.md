@@ -247,12 +247,15 @@ Exact command line, tool restriction flags, and MCP config: see
 `tier3/launch-tier3.ps1`, called by Tier 1 on ALARM/timeout/failure:
 
 1. Fire an urgent toast ("NETWATCH ALARM — investigation window opening").
-2. Launch a visible pwsh 7 console window hosting a FRESH interactive
-   `claude` session (DECISIONS D7 as amended 2026-08-27). The prompt is
-   fully constructed per alarm: reason, affected keys, packet path,
-   verdict path when present, and the Tier-2 session id as reference only
-   — the headless session's drifted context is never resumed
-   automatically.
+2. Launch a visible pwsh 7 console window (conhost-hosted, parked at the
+   rightmost screen's top-right corner — DECISIONS D10) hosting a FRESH
+   interactive `claude` session (DECISIONS D7 as amended 2026-08-27). The
+   prompt is fully constructed per alarm: reason, affected keys, packet
+   path, verdict path when present, and the Tier-2 session id as reference
+   only — the headless session's drifted context is never resumed
+   automatically. A hidden watchdog auto-closes the window after
+   `tier3.idle_close_min` (default 5) minutes of operator input idle and
+   reports every close to `<Desktop>\netwatch\` (D10).
 3. Write `alarms/<ts>-alarm.json`; Tier 1 keeps running (monitoring does
    not stop during investigation) but suspends further Tier-2 launches for
    the same keys while the open-marker exists. Deleting the marker is the

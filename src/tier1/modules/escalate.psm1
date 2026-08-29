@@ -147,6 +147,10 @@ function Invoke-Tier2Cycle {
             }
             2 { $result.outcome = 'timeout';       return $result }   # F1: no retry, straight to Tier 3
             3 { $result.outcome = 'launch_failed'; return $result }   # F3
+            6 { $result.outcome = 'quota_exhausted'; return $result } # F2 does NOT apply here: an instant
+                                                                       # retry cannot succeed against a live
+                                                                       # 429, and this is capacity, not a
+                                                                       # finding, so it must not reach Tier 3
             5 {
                 # D9 partial salvage: the timed-out run's verdict validated for
                 # a subset of keys; the launcher wrote them + uncovered_keys
@@ -183,7 +187,10 @@ function Complete-Tier2Outcome {
     # Applies the outcome. CLEAN: toast + 24h suppression + proposals (D1) +
     # queue cleanup. ALARM/timeout/failed: Tier-3 handoff (keys stay pending =
     # suspended until the human clears the alarm marker, F19). launch_failed:
-    # toast + F3 backoff ladder.
+    # toast + F3 backoff ladder. quota_exhausted: same backoff-ladder shape as
+    # launch_failed (reuses EscState.backoff_idx/next_allowed - no new state),
+    # but non-urgent toast and no Tier-3 (capacity, not a finding; live
+    # 2026-08-27 this used to false-escalate as tier2_failed within seconds).
     param(
         [Parameter(Mandatory)] $Result,
         [Parameter(Mandatory)] $Packet,
@@ -196,6 +203,21 @@ function Complete-Tier2Outcome {
         $Tier3Script = Join-Path $Config.paths.code_root 'src\tier3\launch-tier3.ps1'
     }
     $keys = @($Packet.connections | ForEach-Object key)
+
+    # tier3 window lifecycle settings (docs/plans/TIER3-IDLE-CLOSE-20260828.md).
+    # StrictMode-safe: the whole section and each key are optional; absent
+    # means the launcher's own defaults (5 min idle close, 1100x750 window,
+    # <Desktop>\netwatch reports).
+    $t3cfg = if ($Config.PSObject.Properties['tier3']) { $Config.tier3 } else { $null }
+    $t3opt = {
+        param($name, $default)
+        if ($t3cfg -and $t3cfg.PSObject.Properties[$name]) { $t3cfg.$name } else { $default }
+    }
+    $t3Idle  = & $t3opt 'idle_close_min' 5
+    $t3W     = & $t3opt 'window_width_px' 1100
+    $t3H     = & $t3opt 'window_height_px' 750
+    $t3Dir   = & $t3opt 'report_dir' ''
+    $t3Extra = @('-IdleCloseMin', $t3Idle, '-WindowWidthPx', $t3W, '-WindowHeightPx', $t3H, '-ReportDir', $t3Dir)
 
     switch ($Result.outcome) {
         'clean' {
@@ -244,6 +266,7 @@ function Complete-Tier2Outcome {
                 '-ClaudeExe', $Config.tier2.claude_exe,
                 '-StateRoot', $Config.paths.state_root,
                 '-Keys', ($t3Keys -join ','))
+            $t3Args += $t3Extra
             if ($Result.session_id) { $t3Args += @('-SessionId', $Result.session_id) }
             & pwsh @t3Args
             Write-OpLog -Config $Config -Level ERROR -Message "tier2 partial salvage (D9): $(@($Result.verdict.connections).Count) key(s) applied, tier3 reason=$reason for $($t3Keys -join ', ')"
@@ -262,6 +285,7 @@ function Complete-Tier2Outcome {
                 '-ClaudeExe', $Config.tier2.claude_exe,
                 '-StateRoot', $Config.paths.state_root,
                 '-Keys', ($keys -join ','))
+            $t3Args += $t3Extra
             if ($Result.session_id) { $t3Args += @('-SessionId', $Result.session_id) }
             & pwsh @t3Args
             Write-OpLog -Config $Config -Level ERROR -Message "tier3 launched, reason=$reason keys=$($keys -join ', ')"
@@ -275,6 +299,21 @@ function Complete-Tier2Outcome {
             $null = Send-NetwatchToast -Config $Config -Urgent -Title 'netwatch: tier2 unavailable' `
                 -Message "claude launch failed; retry in $delay min. Residuals keep accumulating."
             Write-OpLog -Config $Config -Level ERROR -Message "tier2 launch failed; backoff $delay min"
+        }
+        'quota_exhausted' {
+            # Capacity, not a finding: no Tier-3, no marker, no queue change -
+            # the same keys are simply escalatable again once next_allowed
+            # passes. Ladder is longer than F3's (quota resets run for hours,
+            # not minutes; live 2026-08-28 the observed reset was ~6h away) and
+            # the toast is non-urgent, since nothing here needs a human's
+            # immediate attention - only that it happened, in case it persists.
+            $ladder = @(15, 60, 180)
+            $delay = $ladder[[math]::Min($EscState.backoff_idx, $ladder.Count - 1)]
+            $EscState.backoff_idx++
+            $EscState.next_allowed = [datetime]::UtcNow.AddMinutes($delay)
+            $null = Send-NetwatchToast -Config $Config -Title 'netwatch: tier2 quota' `
+                -Message "Subscription session limit hit; retrying in $delay min automatically. No action needed."
+            Write-OpLog -Config $Config -Level WARN -Message "tier2 quota exhausted; backoff $delay min, keys stay queued: $($keys -join ', ')"
         }
     }
 }

@@ -52,6 +52,12 @@
     ],
     "redetect_interval_min": 60
   },
+  "tier3": {
+    "idle_close_min": 5,
+    "window_width_px": 1100,
+    "window_height_px": 750,
+    "report_dir": ""
+  },
   "retention_days": {
     "conn_logs": 14,
     "op_logs": 14,

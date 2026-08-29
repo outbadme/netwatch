@@ -16,6 +16,10 @@
 #             (summary missing), then hangs: full per-connection coverage with
 #             zero uncovered keys (reviewer finding M2, 2026-08-28)
 #   crash   - exit 1, no output
+#   quota   - exit 1, envelope shaped like the live 2026-08-27 HTTP 429
+#             session-limit rejection (is_error/api_error_status/result) -
+#             must be classified as quota_exhausted, never retried, never
+#             escalated to Tier 3
 #   cleanfail - valid CLEAN envelope but exit 1 (F2: nonzero exit = failed run)
 #   fenced  - valid CLEAN verdict wrapped in markdown code fences inside the
 #             envelope result (observed live 2026-08-27: sonnet sometimes
@@ -37,6 +41,17 @@ if (-not $mode) { $mode = 'clean' }
 
 if ($mode -eq 'crash') { exit 1 }
 if ($mode -eq 'garbage') { Write-Output 'this is not json at all {{{'; exit 0 }
+if ($mode -eq 'quota') {
+    $envelope = [ordered]@{
+        type             = 'result'
+        is_error         = $true
+        api_error_status = 429
+        result           = "You've hit your session limit · resets 6:20am (America/Tijuana)"
+        session_id       = 'stub-quota-session'
+    }
+    $envelope | ConvertTo-Json -Depth 5 -Compress
+    exit 1
+}
 
 $stdin = [Console]::In.ReadToEnd()
 $packet = $stdin | ConvertFrom-Json
