@@ -42,6 +42,30 @@ Assert-Null  (Test-NonRoutableIp -Ip '8.8.8.8')                  'public v4'
 Assert-Null  (Test-NonRoutableIp -Ip '2606:4700::1111')          'public v6'
 Assert-Equal 'invalid'    (Test-NonRoutableIp -Ip 'nonsense')    'garbage flagged invalid (never treated as routable)'
 
+# --- alternate spellings must not bypass the v4 classes (review finding) ---
+Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '::ffff:10.0.0.1')     'v4-mapped private is rfc1918'
+Assert-Equal 'loopback'   (Test-NonRoutableIp -Ip '::ffff:127.0.0.1')    'v4-mapped loopback'
+Assert-Equal 'cgnat'      (Test-NonRoutableIp -Ip '::ffff:100.64.0.5')   'v4-mapped cgnat'
+Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '167772161')           'decimal spelling of 10.0.0.1'
+Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '64:ff9b::a00:1')      'NAT64-embedded private'
+Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '2002:c0a8:0101::1')   '6to4-embedded 192.168.1.1'
+Assert-Equal 'tunnel'     (Test-NonRoutableIp -Ip '2001:0:4136:e378::1') 'teredo refused'
+Assert-Equal 'reserved'   (Test-NonRoutableIp -Ip '::')                  'v6 unspecified'
+Assert-Null  (Test-NonRoutableIp -Ip '::ffff:8.8.8.8')                   'v4-mapped public stays routable'
+Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b::808:808')                 'NAT64 public stays routable'
+
+# --- ConvertTo-CanonicalIp / Get-EmbeddedIPv4 ---
+Assert-Equal '10.0.0.1'      (ConvertTo-CanonicalIp -Ip '::ffff:10.0.0.1')   'mapped -> v4'
+Assert-Equal '203.0.113.10'  (ConvertTo-CanonicalIp -Ip '3405803786')        'decimal -> dotted'
+Assert-Equal '10.0.0.1'      (ConvertTo-CanonicalIp -Ip '0x0a000001')        'hex -> dotted'
+Assert-Equal '2001:db8::1'   (ConvertTo-CanonicalIp -Ip '2001:db8::1%junk&x=y') 'scope/junk stripped'
+Assert-Equal '2001:db8::1'   (ConvertTo-CanonicalIp -Ip '2001:DB8:0::1')     'v6 compressed lowercase'
+Assert-Null  (ConvertTo-CanonicalIp -Ip 'nope')                               'garbage -> null'
+Assert-Equal '10.0.0.1'      (Get-EmbeddedIPv4 -Ip '64:ff9b::a00:1')         'NAT64 embedded'
+Assert-Equal '192.168.1.1'   (Get-EmbeddedIPv4 -Ip '2002:c0a8:101::')        '6to4 embedded'
+Assert-Null  (Get-EmbeddedIPv4 -Ip '2606:4700::1111')                         'plain v6 embeds nothing'
+Assert-Null  (Get-EmbeddedIPv4 -Ip '8.8.8.8')                                 'v4 embeds nothing'
+
 # --- ConvertTo-CymruName ---
 Assert-Equal '4.108.90.216.origin.asn.cymru.com' (ConvertTo-CymruName -Ip '216.90.108.4') 'v4 reversal'
 $v6name = ConvertTo-CymruName -Ip '2001:db8::1'

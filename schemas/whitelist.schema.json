@@ -23,6 +23,20 @@
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
+          "$comment": "At least one non-empty destination criterion, OR a constraint-only entry that pins BOTH processes and ports/local_ports (P2P-class traffic, e.g. Delivery Optimization 7680). classify.psm1 Test-WhitelistMatch implements the same rule.",
+          "anyOf": [
+            { "required": ["domains"],         "properties": { "domains":         { "minItems": 1 } } },
+            { "required": ["domain_suffixes"], "properties": { "domain_suffixes": { "minItems": 1 } } },
+            { "required": ["cidrs"],           "properties": { "cidrs":           { "minItems": 1 } } },
+            {
+              "required": ["processes"],
+              "properties": { "processes": { "minItems": 1 } },
+              "anyOf": [
+                { "required": ["ports"],       "properties": { "ports":       { "minItems": 1 } } },
+                { "required": ["local_ports"], "properties": { "local_ports": { "minItems": 1 } } }
+              ]
+            }
+          ],
           "properties": {
             "domains": {
               "description": "exact FQDN matches, lowercase, no trailing dot",

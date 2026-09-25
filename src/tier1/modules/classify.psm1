@@ -33,8 +33,24 @@ function Test-WhitelistMatch {
         if ($Conn.lport -notin @($m.local_ports)) { return $false }
     }
 
+    # constraint-only entry (no destination criterion at all): P2P-class
+    # traffic whose peers are arbitrary by design (Delivery Optimization on
+    # 7680). Matches on its constraints alone, but ONLY when it pins both a
+    # process and a port - the schema rejects anything broader. Previously
+    # such an entry silently never matched (review finding).
+    $hasDest = $false
+    foreach ($f in 'domains', 'domain_suffixes', 'cidrs') {
+        if ($m.PSObject.Properties[$f] -and @($m.$f).Count -gt 0) { $hasDest = $true }
+    }
+    if (-not $hasDest) {
+        $hasProc = $m.PSObject.Properties['processes'] -and @($m.processes).Count -gt 0
+        $hasPort = ($m.PSObject.Properties['ports'] -and @($m.ports).Count -gt 0) -or
+                   ($m.PSObject.Properties['local_ports'] -and @($m.local_ports).Count -gt 0)
+        return [bool]($hasProc -and $hasPort)   # constraints above already passed
+    }
+
     # destination criteria: any present criterion may match
-    $domain = if ($Conn.domain) { $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
+    $domain =if ($Conn.domain) { $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
     if ($domain -and $m.PSObject.Properties['domains']) {
         if ($domain -in @($m.domains)) { return $true }
     }

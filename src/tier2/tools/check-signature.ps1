@@ -12,11 +12,21 @@ function Out-Result($obj) { $obj | ConvertTo-Json -Depth 6; exit 0 }
 
 # --- input validation (non-negotiable, model-independent) --------------------
 if (-not [IO.Path]::IsPathRooted($Path))                 { Out-Result @{ error = 'path must be absolute' } }
+# Local drive-letter paths only, checked on the RAW string before anything
+# touches the filesystem: UNC (\\host\share, \\?\UNC\, //host/share) and
+# device paths would make Test-Path/Get-AuthenticodeSignature open an SMB
+# session - network egress plus the user's NTLM hash handed to whatever host
+# hostile packet text talked the model into (review finding).
+if ($Path -notmatch '^[A-Za-z]:[\\/]')                  { Out-Result @{ error = 'network or device path denied by policy' } }
 # Normalize BEFORE the deny check: GetFullPath collapses forward slashes,
 # ./.. segments AND expands 8.3 short names (verified on this volume) - the
 # raw-string regex alone was bypassable (review finding).
 try { $Path = [IO.Path]::GetFullPath($Path) } catch { Out-Result @{ error = 'path not normalizable' } }
+if ($Path -notmatch '^[A-Za-z]:\\')                     { Out-Result @{ error = 'network or device path denied by policy' } }
 if ($Path -match '(?i)\\Users\\[^\\]+\\Downloads(\\|$)') { Out-Result @{ error = 'path denied by policy' } }
+# a mapped network drive (Z: -> \\host\share) is SMB behind a drive letter
+try { $driveType = [IO.DriveInfo]::new($Path.Substring(0, 1)).DriveType } catch { $driveType = 'Unknown' }
+if ("$driveType" -in 'Network', 'NoRootDirectory', 'Unknown') { Out-Result @{ error = 'network or device path denied by policy' } }
 if (-not (Test-Path -LiteralPath $Path -PathType Leaf))  { Out-Result @{ error = 'file not found' } }
 
 $sig = Get-AuthenticodeSignature -LiteralPath $Path

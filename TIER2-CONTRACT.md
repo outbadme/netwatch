@@ -35,12 +35,16 @@ Tool names as seen by the model: `mcp__netwatch__<tool>`.
 Every tool: read-only, argument-validated, per-call timeout 20 s, returns
 JSON text content. Common hard denials inside every tool (enforced in the
 .ps1, regardless of what the model asks): any path under
-`C:\Users\YOURNAME\Downloads`; any write/modify/delete operation (none exist
-in the scripts at all).
+`C:\Users\YOURNAME\Downloads`; any path that is not a local drive-letter path
+(UNC `\\host\share`, `//host/share`, `\\?\`, `\\.\` device paths, and mapped
+network drives) — refused before any filesystem call, because touching one
+opens an SMB session (network egress + the user's NTLM hash to that host);
+any write/modify/delete operation (none exist in the scripts at all).
 
 ### 1.1 `check_signature`
 - Input: `{ "path": "<absolute file path>" }`
-- Validation: absolute path, file exists, not under Downloads.
+- Validation: absolute local drive-letter path (no UNC/device/network
+  drive), file exists, not under Downloads.
 - Action: `pwsh -File check-signature.ps1 <path>` ->
   `Get-AuthenticodeSignature` (pwsh 7 mandatory — the PS 5.1 silent-fail
   bug is exactly here) + signer chain subjects.
@@ -63,10 +67,17 @@ in the scripts at all).
   refuses (returns `{ "refused": "<reason>" }`, not an error) — own public
   IP (reads `state/ownip.json`: detected + last-known + recorded static
   `203.0.113.10`), RFC1918, 100.64.0.0/10, loopback, link-local,
-  multicast/reserved. This guard is not model-overridable.
+  multicast/reserved, IPv6 unspecified, Teredo (`2001::/32`). This guard is
+  not model-overridable. The input is canonicalized FIRST (IPv4-mapped IPv6
+  -> IPv4, decimal/hex/short IPv4 spellings -> dotted quad, IPv6 scope id
+  dropped) and only the canonical form is compared and put in the lookup
+  URL; the IPv4 embedded in NAT64 `64:ff9b::/96`, IPv4-compatible `::/96`
+  and 6to4 `2002::/16` addresses is guarded the same way.
 - Action: AbuseIPDB check + VirusTotal ip-address lookup, through the
   quota ledger `state/repquota.json` (VT budget: <= 400/day and 4/min kept
-  under the ~500/day free tier; AbuseIPDB analogous). Keys from MCP-server
+  under the ~500/day free tier; AbuseIPDB analogous). Quota is reserved
+  under a named mutex before the lookup and refunded when the lookup fails,
+  so parallel tool calls cannot overrun the per-minute budget. Keys from MCP-server
   env (set by Tier 1 from DPAPI-protected `state/apikeys.dat`), never in
   prompt/log.
 - Output: `{ abuseipdb: {score, reports, last_seen}, virustotal:

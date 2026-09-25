@@ -4,6 +4,17 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1') -Force
+
+function ConvertTo-SampleIp {
+    # Dual-stack sockets report IPv4 peers as '::ffff:a.b.c.d'; left raw, those
+    # miss every IPv4 CIDR (whitelist, rfc1918, own-ip) downstream.
+    param([string]$Ip)
+    $canon = ConvertTo-CanonicalIp -Ip $Ip
+    if ($canon) { return $canon }
+    return $Ip
+}
+
 function Get-ListenPorts {
     # Set of locally-listening TCP ports (inbound-direction heuristic input).
     $set = [System.Collections.Generic.HashSet[int]]::new()
@@ -76,9 +87,9 @@ function Get-ConnectionSample {
             image_path         = $info.image_path
             image_exists       = $info.image_exists
             command_line       = $info.command_line
-            laddr              = [string]$c.LocalAddress
+            laddr              = ConvertTo-SampleIp ([string]$c.LocalAddress)
             lport              = [int]$c.LocalPort
-            raddr              = [string]$c.RemoteAddress
+            raddr              = ConvertTo-SampleIp ([string]$c.RemoteAddress)
             rport              = [int]$c.RemotePort
             state              = [string]$c.State
             direction          = (Get-ConnDirection -LocalPort ([int]$c.LocalPort) -ListenPorts $ListenPorts)
@@ -112,7 +123,7 @@ function Get-HostAddresses {
     # which must stay escalatable.
     $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($a in @(Get-NetIPAddress -ErrorAction SilentlyContinue)) {
-        if ($a.IPAddress) { $null = $set.Add(($a.IPAddress -replace '%\d+$', '')) }   # strip zone index
+        if ($a.IPAddress) { $null = $set.Add((ConvertTo-SampleIp ($a.IPAddress -replace '%\d+$', ''))) }   # strip zone index
     }
     return , $set
 }

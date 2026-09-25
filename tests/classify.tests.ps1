@@ -79,6 +79,43 @@ try {
     $c = New-Conn @{ name = 'msrdc'; raddr = '198.51.100.13'; rport = 443 }
     Assert-False (Test-WhitelistMatch -Entry $w365 -Conn $c) 'w365 wrong port no match'
 
+    # --- constraint-only entry (DO peers on 7680): used to NEVER match -------
+    $do = $wl.entries | Where-Object id -eq 'svchost-delivery-optimization-peer'
+    Assert-NotNull $do 'delivery-optimization seed entry present'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680 }
+    Assert-True (Test-WhitelistMatch -Entry $do -Conn $c) 'svchost:7680 to arbitrary peer matches'
+    Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'DO peer classified whitelisted'
+    $c = New-Conn @{ name = 'evil'; raddr = '193.57.46.213'; rport = 7680 }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'other process on 7680 not matched'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7681 }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'svchost on another port not matched'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680; direction = 'inbound' }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'outbound-default holds for constraint-only entry'
+    # an entry pinning only a process (or only a port) must never match all traffic
+    $procOnly = [pscustomobject]@{ match = [pscustomobject]@{ processes = @('svchost') } }
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 443 }
+    Assert-False (Test-WhitelistMatch -Entry $procOnly -Conn $c) 'process-only entry matches nothing'
+    $portOnly = [pscustomobject]@{ match = [pscustomobject]@{ ports = @(443) } }
+    Assert-False (Test-WhitelistMatch -Entry $portOnly -Conn $c) 'port-only entry matches nothing'
+
+    # schema mirrors the rule: process+port ok, process-only / port-only /
+    # empty-destination entries are rejected at load time
+    $wlSchema = "$PSScriptRoot\..\schemas\whitelist.schema.json"
+    $mk = {
+        param($match)
+        @{ version = 1; entries = @(@{ id = 't'; match = $match; added_by = 'human'
+                    added_at = '2026-09-25T00:00:00Z'; evidence = 'test' }) } | ConvertTo-Json -Depth 6
+    }
+    Assert-True  (Test-Json -Json (& $mk @{ processes = @('svchost'); ports = @(7680) }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: process+port ok'
+    Assert-True  (Test-Json -Json (& $mk @{ processes = @('svchost'); local_ports = @(3389) }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: process+local_port ok'
+    Assert-True  (Test-Json -Json (& $mk @{ domains = @('x.example') }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: domain-only ok'
+    Assert-False (Test-Json -Json (& $mk @{ processes = @('svchost') }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: process-only rejected'
+    Assert-False (Test-Json -Json (& $mk @{ ports = @(443) }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: port-only rejected'
+    Assert-False (Test-Json -Json (& $mk @{ domains = @(); processes = @('x') }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: empty destination list rejected'
+    Assert-False (Test-Json -Json (& $mk @{ processes = @(); ports = @(7680) }) -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'schema: empty process list rejected'
+    $seedRaw = Get-Content "$PSScriptRoot\..\config\whitelist.seed.json" -Raw
+    Assert-True (Test-Json -Json $seedRaw -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'seed whitelist still valid'
+
     # --- Get-Classification --------------------------------------------------
     $c = New-Conn @{ name = 'claude'; domain = 'api.anthropic.com'; attribution_source = 'sni' }
     Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'whitelisted verdict'
