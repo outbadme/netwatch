@@ -24,8 +24,17 @@ try {
     Assert-Equal 1 $r.rc '-Strict with gaps exits 1'
 
     $r = Invoke-Probe @('-Strict', '-AllowMissing', 'node,claude,burnttoast,mcp_deps')
-    Assert-Equal 0 $r.rc '-AllowMissing tolerates absent components'
-    Assert-Equal 0 @($r.report.below_minimum).Count 'nothing left below minimum'
+    $haveNm = Test-Path (Join-Path $PSScriptRoot '..\src\tier2\mcp-server\node_modules')
+    if ($haveNm) {
+        # node_modules present but npm is not on this PATH: unverified, which
+        # -AllowMissing must NOT excuse (it covers absent components only)
+        Assert-Equal 1 $r.rc 'unchecked MCP deps stay a gap under -AllowMissing'
+        Assert-Equal 'mcp_deps: unchecked (npm not on PATH)' (@($r.report.below_minimum) -join '|') 'only the unverified MCP deps remain'
+    }
+    else {
+        Assert-Equal 0 $r.rc '-AllowMissing tolerates absent components'
+        Assert-Equal 0 @($r.report.below_minimum).Count 'nothing left below minimum'
+    }
 }
 finally { $env:PATH = $savedPath }
 Complete-Tests

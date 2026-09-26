@@ -53,6 +53,7 @@ function Enable-EventChannel {
     & wevtutil @slArgs
     if ($LASTEXITCODE -ne 0) { throw "wevtutil $($slArgs -join ' ') exited $LASTEXITCODE" }
     $after = @(wevtutil gl $Channel)
+    if ($LASTEXITCODE -ne 0) { throw "wevtutil gl $Channel (verify) exited $LASTEXITCODE" }
     return [pscustomobject]@{
         channel  = $Channel
         enabled  = [bool]($after -match '^\s*enabled:\s*true')

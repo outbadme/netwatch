@@ -367,12 +367,12 @@ if ($IsWindows) {
                 $r = Invoke-Tool $tool @('-Path', (Join-Path $short 'evil.exe'))
                 Assert-Equal 'path denied by policy' $r.error "${tool}: 8.3 short name of Downloads denied ($short)"
             }
-            elseif ($tool -eq 'check-signature.ps1') { Skip-Test '8.3 case - short names disabled on this volume' }
+            else { Skip-Test "${tool}: 8.3 case - short names disabled on this volume" }
             if ($haveSubst) {
                 $r = Invoke-Tool $tool @('-Path', "${substLetter}:\evil.exe")
                 Assert-Equal 'path denied by policy' $r.error "${tool}: subst drive onto Downloads denied"
             }
-            elseif ($tool -eq 'check-signature.ps1') { Skip-Test 'subst case - no free drive letter or subst failed' }
+            else { Skip-Test "${tool}: subst case - no free drive letter or subst failed" }
         }
     }
     finally {

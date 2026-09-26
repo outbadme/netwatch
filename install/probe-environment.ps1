@@ -99,7 +99,11 @@ $result.below_minimum = @(foreach ($k in $min.Keys) {
         }
         elseif ($have[$k] -lt [version]$min[$k]) { "${k}: $($have[$k]) < $($min[$k])" }
     }
-    if ($result.mcp_deps -ne 'ok' -and 'mcp_deps' -notin $AllowMissing) { "mcp_deps: $($result.mcp_deps)" })
+    # -AllowMissing covers only an ABSENT node_modules; 'unchecked' (no npm)
+    # and an npm ls failure are unverified installs, always gaps
+    if ($result.mcp_deps -ne 'ok' -and -not ($result.mcp_deps -eq 'missing' -and 'mcp_deps' -in $AllowMissing)) {
+        "mcp_deps: $($result.mcp_deps)"
+    })
 
 [pscustomobject]$result | ConvertTo-Json
 if ($Strict -and $result.below_minimum.Count) {
