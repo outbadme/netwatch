@@ -18,7 +18,7 @@
 #                 the same 429) and must NOT escalate to Tier 3 (capacity, not
 #                 a finding).
 
-#Requires -Version 7.4
+#Requires -Version 7.6
 param(
     [Parameter(Mandatory)] [string]$PacketPath,
     [Parameter(Mandatory)] [string]$ConfigPath,

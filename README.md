@@ -28,9 +28,9 @@ Design rationale and edge-case behavior: `ARCHITECTURE.md`, `DECISIONS.md`,
 
 ## Requirements
 
-- Windows 10/11, PowerShell 7.4+ (oldest supported LTS; current stable works): `winget install Microsoft.PowerShell`
-- Node.js 22+ (24 LTS recommended; 20 is end-of-life): `winget install OpenJS.NodeJS.LTS`
-- Claude Code CLI 2.1.223+ with an active login: `npm install -g @anthropic-ai/claude-code`
+- Windows 10/11, PowerShell 7.6+ (current stable): `winget install Microsoft.PowerShell`
+- Node.js 24+ (LTS): `winget install OpenJS.NodeJS.LTS`
+- Claude Code CLI 2.1.283+ with an active login: `npm install -g @anthropic-ai/claude-code@latest`
 - Wireshark/tshark + Npcap (install below); optional AbuseIPDB / VirusTotal keys
 
 ## Install

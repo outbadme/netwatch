@@ -2,7 +2,7 @@
 # install\packages\ (read-only; run before executing any installer).
 # Checks: size + SHA256 vs the vendor SIGNATURES file + Authenticode.
 
-#Requires -Version 7.4
+#Requires -Version 7.6
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

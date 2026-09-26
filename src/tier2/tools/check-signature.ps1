@@ -3,7 +3,7 @@
 # Microsoft.PowerShell.Security -> Get-AuthenticodeSignature false "all clear".
 # Output: single JSON object on stdout.
 
-#Requires -Version 7.4
+#Requires -Version 7.6
 param([Parameter(Mandatory)] [string]$Path)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

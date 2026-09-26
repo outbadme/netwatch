@@ -2,7 +2,7 @@
 # Comparison against vendor/upstream hashes is Tier-3 (human) work - this
 # tool only produces the local fact.
 
-#Requires -Version 7.4
+#Requires -Version 7.6
 param([Parameter(Mandatory)] [string]$Path)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
