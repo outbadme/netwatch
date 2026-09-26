@@ -109,8 +109,10 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 - Whitelist entries match on the process NAME. For well-known names Tier 1
   pins the identity (`src/tier1/modules/identity.psm1`): `svchost`,
   `explorer`, `taskhostw`, `runtimebroker`, `backgroundtaskhost` must run
-  from their System32/Windows path; `msedge` (any channel) and
-  `msedgewebview2` must carry a valid Microsoft Corporation signature;
+  from their System32/Windows path; `msedge` (any channel) and the
+  Evergreen `msedgewebview2` must run from their Program Files / per-user
+  Edge roots AND carry a valid Microsoft Corporation signature
+  (fixed-version WebView2 runtimes inside apps need a `process_images` entry);
   a process named `dosvc` is always an impostor (DoSvc runs inside
   svchost). Otherwise the connection gets no whitelist and no browser
   credit. Add or override pins (paths, optional Authenticode signers) in
