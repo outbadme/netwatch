@@ -15,7 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-foreach ($m in 'state', 'netutil', 'sampling', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast', 'dolog', 'sysmon') {
+foreach ($m in 'state', 'netutil', 'sampling', 'identity', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast', 'dolog', 'sysmon') {
     Import-Module (Join-Path $PSScriptRoot "modules\$m.psm1") -Force
 }
 
@@ -34,6 +34,14 @@ try {
     $cfg = Get-NetwatchConfig -Path $ConfigPath
     Initialize-StateRoot -Config $cfg
     $whitelist = Get-Whitelist -Config $cfg
+    $warnUnpinned = {
+        # browser credit = any attributed domain for that bare name
+        $u = @(Get-UnpinnedNames -Names @($cfg.classify.browser_attributed_ok) -Whitelist $whitelist)
+        if ($u.Count) {
+            Write-OpLog -Config $cfg -Level WARN -Message "browser names without an identity pin (name-only trust; add process_images): $($u -join ', ')"
+        }
+    }
+    & $warnUnpinned
     $wlMtime = (Get-Item -LiteralPath $cfg.paths.whitelist -ErrorAction SilentlyContinue)?.LastWriteTimeUtc
     Update-OwnIp -Config $cfg
 
@@ -89,6 +97,7 @@ try {
                 $whitelist = Get-Whitelist -Config $cfg
                 $wlMtime = $mt
                 Write-OpLog -Config $cfg -Level INFO -Message 'whitelist reloaded (file changed)'
+                & $warnUnpinned
                 # F20 accountability toast (one per bad-load episode)
                 if ($whitelist.PSObject.Properties['load_error'] -and $whitelist.load_error) {
                     if (-not $wlErrorToasted) {
@@ -200,8 +209,11 @@ try {
                         $null = Update-ResidualQueue -Queue $queue -Conn $c -NowUtc $now
                         # immediate triggers: F14 deleted image, F15 unclassified
                         # inbound. Sticky on the queue entry - a short-lived
-                        # trigger must not be forgotten next tick.
-                        if ((Test-ImageGone -Conn $c) -or $c.direction -eq 'inbound') {
+                        # trigger must not be forgotten next tick. F15 counts
+                        # LIVE inbound only: Sysmon logs every accepted
+                        # connection (each with a fresh peer port = a fresh
+                        # key); those go through the normal debounce.
+                        if ((Test-ImageGone -Conn $c) -or ($c.direction -eq 'inbound' -and $c.state -ne 'sysmon')) {
                             $queue[$key].immediate = $true
                         }
                     }

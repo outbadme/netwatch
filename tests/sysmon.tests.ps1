@@ -52,12 +52,13 @@ Assert-Equal '203.0.113.78' $c.raddr 'v4-mapped destination canonicalized'
 Assert-Null (ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ Protocol = 'udp' })) 'udp ignored (tier 1 is TCP-only)'
 Assert-Null (ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ DestinationPort = '' })) 'missing port -> dropped'
 Assert-Null (ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ DestinationIp = 'garbage' })) 'bad ip -> dropped'
+Assert-Null (ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ Initiated = '' })) 'no Initiated -> dropped (direction unknown)'
 
 # --- merge with the polled sample -----------------------------------------------
 $live = @{ pid = 10; name = 'claude'; image_path = $null; image_exists = $true; command_line = 'claude -p'
            laddr = '192.168.1.10'; lport = 50000; raddr = '160.79.104.10'; rport = 443; state = 'Established'
            direction = 'outbound'; domain = $null; attribution_source = 'none' }
-$evLive  = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '10'; DestinationIp = '160.79.104.10'; Image = 'C:\x\claude.exe' } 1)
+$evLive  = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '10'; DestinationIp = '160.79.104.10'; SourcePort = '50000'; Image = 'C:\x\claude.exe' } 1)
 $evShort = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{} 2)
 $evDup   = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{} 3)
 $merged = @(Merge-SysmonConnections -Sample @($live) -Events @($evLive, $evShort, $evDup))
@@ -66,6 +67,21 @@ Assert-Equal 'claude -p' $merged[0].command_line 'live-table entry wins over its
 Assert-Equal 'sysmon' $merged[1].state 'event-only conn appended'
 Assert-False $merged[1].ContainsKey('record_id') 'record_id stripped from merged conns'
 Assert-False $merged[1].image_exists 'image existence checked on disk (absent here)'
+Assert-Equal 'C:\x\claude.exe' $merged[0].image_path 'unreadable live image filled from the event'
+Assert-Equal 'claude' $merged[0].name 'live name kept'
+# the event's Initiated flag overrides the Listen-port direction guess
+$liveIn = @{ pid = 11; name = 'curl'; image_path = 'C:\t\curl.exe'; image_exists = $true; command_line = ''
+             laddr = '192.168.1.10'; lport = 50123; raddr = '203.0.113.9'; rport = 443; state = 'Established'
+             direction = 'inbound'; domain = $null; attribution_source = 'none' }
+$evOut = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '11'; DestinationIp = '203.0.113.9'; Image = 'C:\t\curl.exe' } 4)
+$merged = @(Merge-SysmonConnections -Sample @($liveIn) -Events @($evOut))
+Assert-Equal 'outbound' $merged[0].direction 'sysmon direction wins over the heuristic'
+Assert-Equal 'C:\t\curl.exe' $merged[0].image_path 'a readable live image is never replaced'
+# another socket of the same process to the same remote end: no correction
+$liveIn.direction = 'inbound'; $liveIn.lport = 50999
+$merged = @(Merge-SysmonConnections -Sample @($liveIn) -Events @($evOut))
+Assert-Equal 'inbound' $merged[0].direction 'event for a different local port does not touch the row'
+Assert-Equal 1 $merged.Count 'and adds no duplicate row for the same pid + remote end'
 $merged = @(Merge-SysmonConnections -Sample @() -Events @())
 Assert-Equal 0 $merged.Count 'empty merge'
 

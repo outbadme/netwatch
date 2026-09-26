@@ -76,6 +76,13 @@ Assert-Equal 'tunnel'        (Test-NonRoutableIp -Ip '64:ff9b:1:ff::1')      'lo
 Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b:2::1')                          'just outside local-use /48'
 Assert-Null  (Get-EmbeddedIPv4 -Ip '8.8.8.8')                                 'v4 embeds nothing'
 
+# --- ConvertTo-CanonicalKey ---
+Assert-Equal 'svchost|203.0.113.5|443' (ConvertTo-CanonicalKey -Key 'svchost|::ffff:203.0.113.5|443') 'mapped v6 key segment'
+Assert-Equal 'a|2001:db8::1|80'        (ConvertTo-CanonicalKey -Key 'a|2001:DB8:0::1|80')         'v6 key segment compressed'
+Assert-Equal 'a|example.com|443'       (ConvertTo-CanonicalKey -Key 'a|example.com|443')          'domain key untouched'
+Assert-Equal 'a|10.1|443'              (ConvertTo-CanonicalKey -Key 'a|10.1|443')                 'no colon -> untouched'
+Assert-Equal 'garbage'                 (ConvertTo-CanonicalKey -Key 'garbage')                    'non-key untouched'
+
 # --- ConvertTo-CymruName ---
 Assert-Equal '4.108.90.216.origin.asn.cymru.com' (ConvertTo-CymruName -Ip '216.90.108.4') 'v4 reversal'
 $v6name = ConvertTo-CymruName -Ip '2001:db8::1'

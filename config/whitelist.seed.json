@@ -345,6 +345,22 @@
       "notes": "Peer IPs are arbitrary internet nodes by design (P2P); the port+process pair is the stable signal. Does NOT cover MCC fetches on port 80 - separate question."
     },
     {
+      "id": "svchost-delivery-optimization-peer-inbound",
+      "match": {
+        "processes": [
+          "svchost"
+        ],
+        "local_ports": [
+          7680
+        ],
+        "direction": "inbound"
+      },
+      "added_by": "seed",
+      "added_at": "2026-09-26T00:00:00Z",
+      "evidence": "Inbound half of svchost-delivery-optimization-peer: DO peers connect to this host's DoSvc listener on TCP 7680 (the documented DO P2P port). Without it every accepted peer is a fresh residual key (peer ports are ephemeral) and F15 escalates it immediately.",
+      "notes": "Only while identity is verified (identity.psm1): an unreadable svchost image gets no constraint-only entry."
+    },
+    {
       "id": "dosvc-mcc-content-dl-delivery",
       "match": {
         "domain_suffixes": [

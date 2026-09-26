@@ -47,17 +47,73 @@ try {
     $c = New-Conn @{ name = 'svchost'; image_path = $fake; domain = 'update.microsoft.com'; attribution_source = 'sni' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'impostor svchost to a microsoft domain NOT whitelisted'
 
-    # unreadable path (non-elevated WMI on a SYSTEM service): name-only fallback
+    # unreadable path (non-elevated WMI on a SYSTEM service): name-only
+    # fallback for entries with a destination, none for any-peer entries
     $c = New-Conn @{ name = 'svchost'; image_path = $null; rport = 7680 }
     Assert-Equal 'unknown' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'null path -> unknown'
-    Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unknown falls back to name-only'
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unknown: no constraint-only (any-peer) entry'
+    $c = New-Conn @{ name = 'svchost'; image_path = $null; raddr = '4.208.1.1'; rport = 443 }
+    Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unknown: destination entry still matches by name'
+    $c = New-Conn @{ name = 'svchost'; image_path = "$($env:SystemRoot)\SysWOW64\svchost.exe"; rport = 7680 }
+    Assert-Equal 'verified' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'SysWOW64 svchost verified'
+
+    # dosvc is a service inside svchost: a dosvc.exe is never legitimate
+    $c = New-Conn @{ name = 'dosvc'; image_path = 'C:\Windows\System32\dosvc.exe'; rport = 80 }
+    Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'any dosvc image -> mismatch'
+    $c = New-Conn @{ name = 'dosvc'; image_path = $null; rport = 80 }
+    Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'dosvc with unreadable image -> mismatch'
 
     # --- built-in pin: msedge and the browser policy ---------------------------
+    Set-SignerProvider { param($p) 'Microsoft Corporation' }
     $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
     $c = New-Conn @{ name = 'msedge'; image_path = $edge; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'browser-attributed' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'real Edge keeps browser policy'
     $c = New-Conn @{ name = 'msedge'; image_path = 'C:\Users\victim\Downloads\msedge.exe'; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'fake msedge loses browser policy'
+    # per-user roots: a Windows-shaped LOCALAPPDATA only for these checks (the
+    # test state root is built from the real one)
+    $savedLad = $env:LOCALAPPDATA
+    $lad = if ($IsWindows) { $env:LOCALAPPDATA } else { 'C:\Users\me\AppData\Local' }
+    $env:LOCALAPPDATA = $lad
+    foreach ($ch in "${env:ProgramFiles(x86)}\Microsoft\Edge Beta\Application\msedge.exe",
+                    "$($env:LOCALAPPDATA)\Microsoft\Edge SxS\Application\msedge.exe") {
+        $c = New-Conn @{ name = 'msedge'; image_path = $ch }
+        Assert-Equal 'verified' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "Edge channel verified: $ch"
+    }
+    foreach ($wv in "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application\140.0.1.2\msedgewebview2.exe",
+                    "$($env:LOCALAPPDATA)\Microsoft\EdgeWebView\Application\140.0.1.2\msedgewebview2.exe") {
+        $c = New-Conn @{ name = 'msedgewebview2'; image_path = $wv }
+        Assert-Equal 'verified' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "signed WebView2 verified: $wv"
+    }
+    # a genuine signed binary copied elsewhere (DLL side-load) is not verified
+    foreach ($x in @(@('msedge', 'C:\Users\victim\Downloads\Microsoft\Edge\Application\msedge.exe'),
+                     @('msedgewebview2', 'C:\Program Files\SomeApp\webview\msedgewebview2.exe'))) {
+        $c = New-Conn @{ name = $x[0]; image_path = $x[1] }
+        Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "signed copy outside the install roots: $($x[1])"
+    }
+    $env:LOCALAPPDATA = $savedLad
+    Set-SignerProvider { param($p) 'Evil Ltd' }
+    $c = New-Conn @{ name = 'msedgewebview2'; image_path = 'C:\Users\victim\Downloads\msedgewebview2.exe' }
+    Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'WebView2 with a foreign signer -> mismatch'
+    $c = New-Conn @{ name = 'msedge'; image_path = $edge; domain = 'random-site.example'; attribution_source = 'sni' }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'Edge path with a foreign signer loses browser policy'
+    Set-SignerProvider $null
+
+    # env values are literal inside a pin pattern (a profile named 'a[1]')
+    $env:NW_TEST_PROFILE = 'C:\Users\a[1]'
+    Assert-True ('C:\Users\a[1]\x.exe' -like (Expand-PinPattern -Pattern '%NW_TEST_PROFILE%\x.exe')) 'bracket in env value matches literally'
+    Assert-False ('C:\Users\a1\x.exe' -like (Expand-PinPattern -Pattern '%NW_TEST_PROFILE%\x.exe')) 'bracket in env value is not a wildcard set'
+    Remove-Item Env:NW_TEST_PROFILE
+
+    # the dosvc pin cannot be overridden into 'verified'
+    $wlD = $wl | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $wlD | Add-Member -NotePropertyName process_images -NotePropertyValue ([pscustomobject]@{ dosvc = @('C:\x\dosvc.exe') })
+    $c = New-Conn @{ name = 'dosvc'; image_path = 'C:\x\dosvc.exe' }
+    Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wlD) 'process_images cannot re-enable dosvc'
+
+    # unpinned browser names are reported (operator WARN at load)
+    $un = @(Get-UnpinnedNames -Names @('msedge', 'msedgewebview2', 'octium') -Whitelist $wl)
+    Assert-Equal 'octium' ($un -join ',') 'only the unpinned browser name is reported'
 
     # --- unpinned names behave exactly as before ------------------------------
     $c = New-Conn @{ name = 'claude'; image_path = 'D:\anywhere\claude.exe'; domain = 'api.anthropic.com'; attribution_source = 'sni' }
