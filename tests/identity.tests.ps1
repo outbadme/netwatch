@@ -70,16 +70,28 @@ try {
     Assert-Equal 'browser-attributed' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'real Edge keeps browser policy'
     $c = New-Conn @{ name = 'msedge'; image_path = 'C:\Users\victim\Downloads\msedge.exe'; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'fake msedge loses browser policy'
+    # per-user roots: a Windows-shaped LOCALAPPDATA only for these checks (the
+    # test state root is built from the real one)
+    $savedLad = $env:LOCALAPPDATA
+    $lad = if ($IsWindows) { $env:LOCALAPPDATA } else { 'C:\Users\me\AppData\Local' }
+    $env:LOCALAPPDATA = $lad
     foreach ($ch in "${env:ProgramFiles(x86)}\Microsoft\Edge Beta\Application\msedge.exe",
-                    'C:\Users\me\AppData\Local\Microsoft\Edge SxS\Application\msedge.exe') {
+                    "$($env:LOCALAPPDATA)\Microsoft\Edge SxS\Application\msedge.exe") {
         $c = New-Conn @{ name = 'msedge'; image_path = $ch }
         Assert-Equal 'verified' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "Edge channel verified: $ch"
     }
     foreach ($wv in "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application\140.0.1.2\msedgewebview2.exe",
-                    'C:\Program Files\SomeApp\webview\msedgewebview2.exe') {
+                    "$($env:LOCALAPPDATA)\Microsoft\EdgeWebView\Application\140.0.1.2\msedgewebview2.exe") {
         $c = New-Conn @{ name = 'msedgewebview2'; image_path = $wv }
         Assert-Equal 'verified' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "signed WebView2 verified: $wv"
     }
+    # a genuine signed binary copied elsewhere (DLL side-load) is not verified
+    foreach ($x in @(@('msedge', 'C:\Users\victim\Downloads\Microsoft\Edge\Application\msedge.exe'),
+                     @('msedgewebview2', 'C:\Program Files\SomeApp\webview\msedgewebview2.exe'))) {
+        $c = New-Conn @{ name = $x[0]; image_path = $x[1] }
+        Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) "signed copy outside the install roots: $($x[1])"
+    }
+    $env:LOCALAPPDATA = $savedLad
     Set-SignerProvider { param($p) 'Evil Ltd' }
     $c = New-Conn @{ name = 'msedgewebview2'; image_path = 'C:\Users\victim\Downloads\msedgewebview2.exe' }
     Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wl) 'WebView2 with a foreign signer -> mismatch'
@@ -92,6 +104,12 @@ try {
     Assert-True ('C:\Users\a[1]\x.exe' -like (Expand-PinPattern -Pattern '%NW_TEST_PROFILE%\x.exe')) 'bracket in env value matches literally'
     Assert-False ('C:\Users\a1\x.exe' -like (Expand-PinPattern -Pattern '%NW_TEST_PROFILE%\x.exe')) 'bracket in env value is not a wildcard set'
     Remove-Item Env:NW_TEST_PROFILE
+
+    # the dosvc pin cannot be overridden into 'verified'
+    $wlD = $wl | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $wlD | Add-Member -NotePropertyName process_images -NotePropertyValue ([pscustomobject]@{ dosvc = @('C:\x\dosvc.exe') })
+    $c = New-Conn @{ name = 'dosvc'; image_path = 'C:\x\dosvc.exe' }
+    Assert-Equal 'mismatch' (Test-ProcessIdentity -Conn $c -Whitelist $wlD) 'process_images cannot re-enable dosvc'
 
     # unpinned browser names are reported (operator WARN at load)
     $un = @(Get-UnpinnedNames -Names @('msedge', 'msedgewebview2', 'octium') -Whitelist $wl)

@@ -21,7 +21,7 @@
 # WebView2 by install layout + Microsoft signature, since channels and
 # fixed-version WebView2 runtimes live in many places) overlaid by the
 # whitelist's optional top-level "process_images" (a name given there
-# REPLACES the built-in pin for that name). Paths may use %ENV% variables and
+# REPLACES the built-in pin for that name, except an empty one). Paths may use %ENV% variables and
 # -like wildcards; comparison is case-insensitive. Characters in an EXPANDED
 # variable are literal (a profile named 'a[1]' is not a wildcard set).
 # An empty paths list = no legitimate image exists (the name alone is a lie).
@@ -38,12 +38,19 @@ $script:BuiltinPins = @{
     'taskhostw'          = @{ paths = @('%SystemRoot%\System32\taskhostw.exe') }
     'runtimebroker'      = @{ paths = @('%SystemRoot%\System32\RuntimeBroker.exe') }
     'backgroundtaskhost' = @{ paths = @('%SystemRoot%\System32\backgroundTaskHost.exe') }
-    # stable/Beta/Dev under Program Files, Canary ('Edge SxS') per user
-    'msedge'             = @{ paths   = @('*\Microsoft\Edge*\Application\msedge.exe')
+    # stable/Beta/Dev under Program Files, Canary ('Edge SxS') per user. The
+    # roots matter: a signed msedge.exe copied next to a planted DLL anywhere
+    # else is a classic side-load and must not get browser credit
+    'msedge'             = @{ paths   = @('%ProgramFiles(x86)%\Microsoft\Edge*\Application\msedge.exe'
+                                          '%ProgramFiles%\Microsoft\Edge*\Application\msedge.exe'
+                                          '%LOCALAPPDATA%\Microsoft\Edge SxS\Application\msedge.exe')
                               signers = @('Microsoft Corporation') }
-    # Evergreen runtime (EdgeWebView\Application\<ver>\) or a fixed-version
-    # runtime shipped inside an app: location varies, the signature does not
-    'msedgewebview2'     = @{ paths   = @('*\msedgewebview2.exe')
+    # Evergreen runtime (EdgeWebView\Application\<ver>\, machine or per
+    # user). A fixed-version runtime shipped inside an app needs its own
+    # process_images entry.
+    'msedgewebview2'     = @{ paths   = @('%ProgramFiles(x86)%\Microsoft\Edge*\Application\*\msedgewebview2.exe'
+                                          '%ProgramFiles%\Microsoft\Edge*\Application\*\msedgewebview2.exe'
+                                          '%LOCALAPPDATA%\Microsoft\EdgeWebView\Application\*\msedgewebview2.exe')
                               signers = @('Microsoft Corporation') }
 }
 
@@ -76,6 +83,9 @@ function Get-ProcessPins {
     foreach ($k in $script:BuiltinPins.Keys) { $pins[$k] = $script:BuiltinPins[$k] }
     if ($null -ne $Whitelist -and $Whitelist.PSObject.Properties['process_images']) {
         foreach ($p in $Whitelist.process_images.PSObject.Properties) {
+            # a built-in "no legitimate image" pin (dosvc) is not overridable
+            $bi = $script:BuiltinPins[$p.Name.ToLowerInvariant()]
+            if ($bi -and @($bi.paths).Count -eq 0) { continue }
             $v = $p.Value
             $pin = if ($v -is [string] -or $v -is [array]) { @{ paths = @($v) } }
                    else {

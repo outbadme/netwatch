@@ -149,7 +149,8 @@ try {
     Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'whitelisted verdict'
     # msedge is pinned by install layout + Microsoft signature (identity.psm1)
     Set-SignerProvider { param($p) 'Microsoft Corporation' }
-    $edgeImg = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+    if (-not ${env:ProgramFiles(x86)}) { ${env:ProgramFiles(x86)} = 'C:\Program Files (x86)' }
+    $edgeImg = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
     $c = New-Conn @{ name = 'msedge'; image_path = $edgeImg; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'browser-attributed' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'browser with domain'
     $c = New-Conn @{ name = 'msedge'; domain = 'random-site.example'; attribution_source = 'sni' }

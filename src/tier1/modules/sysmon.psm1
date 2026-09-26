@@ -178,15 +178,22 @@ function Merge-SysmonConnections {
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Sample,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Events
     )
+    # corrections match the full socket (pid + both ends): one process often
+    # holds several sockets to the same remote endpoint. Event-only rows are
+    # deduplicated on pid + remote end (they share one residual key anyway).
     $live = @{}
-    foreach ($c in $Sample) { $live["$($c.pid)|$($c.raddr)|$($c.rport)"] = $c }
-    $seen = [System.Collections.Generic.HashSet[string]]::new([string[]]@($live.Keys))
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($c in $Sample) {
+        $live["$($c.pid)|$($c.laddr)|$($c.lport)|$($c.raddr)|$($c.rport)"] = $c
+        $null = $seen.Add("$($c.pid)|$($c.raddr)|$($c.rport)")
+    }
     $out = [System.Collections.Generic.List[object]]::new()
     foreach ($c in $Sample) { $out.Add($c) }
     foreach ($e in $Events) {
         $k = "$($e.pid)|$($e.raddr)|$($e.rport)"
-        if ($live.ContainsKey($k)) {
-            $row = $live[$k]
+        $full = "$($e.pid)|$($e.laddr)|$($e.lport)|$($e.raddr)|$($e.rport)"
+        if ($live.ContainsKey($full)) {
+            $row = $live[$full]
             $row.direction = $e.direction
             if (-not $row.image_path -and $e.image_path) {
                 $row.image_path = $e.image_path

@@ -58,7 +58,7 @@ Assert-Null (ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ Initiated = ''
 $live = @{ pid = 10; name = 'claude'; image_path = $null; image_exists = $true; command_line = 'claude -p'
            laddr = '192.168.1.10'; lport = 50000; raddr = '160.79.104.10'; rport = 443; state = 'Established'
            direction = 'outbound'; domain = $null; attribution_source = 'none' }
-$evLive  = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '10'; DestinationIp = '160.79.104.10'; Image = 'C:\x\claude.exe' } 1)
+$evLive  = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '10'; DestinationIp = '160.79.104.10'; SourcePort = '50000'; Image = 'C:\x\claude.exe' } 1)
 $evShort = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{} 2)
 $evDup   = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{} 3)
 $merged = @(Merge-SysmonConnections -Sample @($live) -Events @($evLive, $evShort, $evDup))
@@ -71,12 +71,17 @@ Assert-Equal 'C:\x\claude.exe' $merged[0].image_path 'unreadable live image fill
 Assert-Equal 'claude' $merged[0].name 'live name kept'
 # the event's Initiated flag overrides the Listen-port direction guess
 $liveIn = @{ pid = 11; name = 'curl'; image_path = 'C:\t\curl.exe'; image_exists = $true; command_line = ''
-             laddr = '192.168.1.10'; lport = 3389; raddr = '203.0.113.9'; rport = 443; state = 'Established'
+             laddr = '192.168.1.10'; lport = 50123; raddr = '203.0.113.9'; rport = 443; state = 'Established'
              direction = 'inbound'; domain = $null; attribution_source = 'none' }
 $evOut = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ ProcessId = '11'; DestinationIp = '203.0.113.9'; Image = 'C:\t\curl.exe' } 4)
 $merged = @(Merge-SysmonConnections -Sample @($liveIn) -Events @($evOut))
 Assert-Equal 'outbound' $merged[0].direction 'sysmon direction wins over the heuristic'
 Assert-Equal 'C:\t\curl.exe' $merged[0].image_path 'a readable live image is never replaced'
+# another socket of the same process to the same remote end: no correction
+$liveIn.direction = 'inbound'; $liveIn.lport = 50999
+$merged = @(Merge-SysmonConnections -Sample @($liveIn) -Events @($evOut))
+Assert-Equal 'inbound' $merged[0].direction 'event for a different local port does not touch the row'
+Assert-Equal 1 $merged.Count 'and adds no duplicate row for the same pid + remote end'
 $merged = @(Merge-SysmonConnections -Sample @() -Events @())
 Assert-Equal 0 $merged.Count 'empty merge'
 
