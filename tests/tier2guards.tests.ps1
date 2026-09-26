@@ -287,7 +287,7 @@ if ($IsWindows) {
         $uncLink = Join-Path $lroot 'share'
         $haveUnc = $true
         try { $null = [IO.Directory]::CreateSymbolicLink($uncLink, '\\attacker.invalid\share') }
-        catch { $haveUnc = $false; Write-Host "SKIP: symlink-to-UNC case (no symlink privilege: $($_.Exception.Message))" -ForegroundColor Yellow }
+        catch { $haveUnc = $false; Skip-Test "symlink-to-UNC cases (no symlink privilege: $($_.Exception.Message))" }
 
         # --- bypasses found by the 2026-09-26 reviews ---------------------------
         # (a) junction onto a PROFILE: C:\a -> ...\Users\victim, path a\Downloads\x
@@ -367,12 +367,12 @@ if ($IsWindows) {
                 $r = Invoke-Tool $tool @('-Path', (Join-Path $short 'evil.exe'))
                 Assert-Equal 'path denied by policy' $r.error "${tool}: 8.3 short name of Downloads denied ($short)"
             }
-            else { Write-Host "SKIP: 8.3 case - short names disabled on this volume" -ForegroundColor Yellow }
+            elseif ($tool -eq 'check-signature.ps1') { Skip-Test '8.3 case - short names disabled on this volume' }
             if ($haveSubst) {
                 $r = Invoke-Tool $tool @('-Path', "${substLetter}:\evil.exe")
                 Assert-Equal 'path denied by policy' $r.error "${tool}: subst drive onto Downloads denied"
             }
-            else { Write-Host "SKIP: subst case - no free drive letter or subst failed" -ForegroundColor Yellow }
+            elseif ($tool -eq 'check-signature.ps1') { Skip-Test 'subst case - no free drive letter or subst failed' }
         }
     }
     finally {

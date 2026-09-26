@@ -39,10 +39,10 @@ Design rationale and edge-case behavior: `ARCHITECTURE.md`, `DECISIONS.md`,
 winget install --id WiresharkFoundation.Wireshark -e                      # tshark + Npcap
 wevtutil sl Microsoft-Windows-DNS-Client/Operational /e:true /ms:67108864 # elevated: DNS attribution
 Install-Module BurntToast -Scope CurrentUser -MinimumVersion 1.1.0 -Force # toasts
-npm ci --prefix src\tier2\mcp-server                                      # MCP server deps
+npm ci --ignore-scripts --prefix src\tier2\mcp-server                     # MCP server deps
 pwsh -File install\init-deploy.ps1                                        # machine config + state + whitelist seed
 pwsh -File install\register-task.ps1                                      # logon task
-pwsh -File install\enable-sysmon.ps1 -SysmonExe <path>\Sysmon64.exe      # optional, elevated: see below
+pwsh -File install\enable-sysmon.ps1 -SysmonExe <path>\Sysmon64.exe      # optional, elevated, Sysmon 15.0+
 Start-ScheduledTask -TaskName netwatch-tier1
 ```
 
@@ -54,6 +54,31 @@ Optional reputation keys: copy `.env.example` to `.env`, fill the values, then
 `pwsh -File install\protect-keys.ps1 -EnvFile .env -DeleteSource`
 (DPAPI-protected, current user only; without keys the pipeline still works —
 reputation answers `no_key`).
+
+Already running Sysmon? `enable-sysmon.ps1` refuses to touch it until you
+choose: `-KeepExistingConfig` (your config must log TCP NetworkConnect) or
+`-ReplaceExistingConfig` (the current config is saved under
+`state\sysmon-backup-<time>\` first).
+
+Check the machine at any time: `pwsh -File install\probe-environment.ps1
+-Strict` exits 1 and lists every component that is missing or below its
+minimum.
+
+## Upgrade
+
+```powershell
+winget upgrade Microsoft.PowerShell; winget upgrade OpenJS.NodeJS.LTS
+npm install -g @anthropic-ai/claude-code@latest
+git pull; npm ci --ignore-scripts --prefix src\tier2\mcp-server
+pwsh -File install\probe-environment.ps1 -Strict                        # all minimums met?
+Stop-ScheduledTask -TaskName netwatch-tier1; Start-ScheduledTask -TaskName netwatch-tier1
+```
+
+Tasks registered before 2026-09-26 start `netwatch.ps1` directly: re-run
+`install\register-task.ps1` once so the task uses `start-netwatch.ps1`. That
+launcher checks the PowerShell version itself; if pwsh is too old the monitor
+does not start, and says so in `%LOCALAPPDATA%\netwatch\logs\bootstrap.log`
+and a toast instead of failing silently inside the hidden task.
 
 ## What it downloads / what leaves the machine
 

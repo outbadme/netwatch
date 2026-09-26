@@ -1,0 +1,12 @@
+# Weekly bump proposals for the SHA-pinned workflow actions and the MCP
+# server's npm dependencies. Proposals only - a human merges them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /src/tier2/mcp-server
+    schedule:
+      interval: weekly
