@@ -31,7 +31,8 @@ try {
     # mcp config shape
     $mcp = Get-Content $mcpOut -Raw | ConvertFrom-Json
     Assert-Equal 'stdio' $mcp.mcpServers.netwatch.type 'mcp type'
-    Assert-Equal 'node' $mcp.mcpServers.netwatch.command 'mcp command via PATH'
+    Assert-Equal (Get-Command node).Source $mcp.mcpServers.netwatch.command 'mcp command is the absolute node path resolved at deploy'
+    Assert-True ([IO.Path]::IsPathRooted($mcp.mcpServers.netwatch.command)) 'mcp command is not a bare PATH lookup'
     Assert-True (Test-Path $mcp.mcpServers.netwatch.args[0]) 'server.mjs path exists'
     Assert-Equal $root $mcp.mcpServers.netwatch.env.NETWATCH_STATE 'state env wired'
     Assert-True ($mcp.mcpServers.netwatch.env.NETWATCH_PWSH -like '*pwsh.exe') 'pwsh env wired'

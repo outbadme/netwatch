@@ -54,6 +54,8 @@ function Get-RefuseReason([System.Net.IPAddress]$A) {
         if ($A.IsIPv6LinkLocal)                   { return 'link-local' }
         if ($A.IsIPv6Multicast)                   { return 'multicast' }
         if (Test-InCidr $A 'fc00::/7')            { return 'ula' }
+        if (Test-InCidr $A 'fec0::/10')           { return 'site-local' }      # deprecated, never global
+        if (Test-InCidr $A '2001:db8::/32')       { return 'documentation' }   # RFC 3849, never routed
         if ($A.Equals([System.Net.IPAddress]::IPv6Any)) { return 'reserved' }
         if (Test-InCidr $A '2001::/32')           { return 'tunnel' }   # Teredo embeds client IPv4
         if (Test-InCidr $A '64:ff9b:1::/48')      { return 'tunnel' }   # local-use NAT64: v4 position unknowable
@@ -116,7 +118,10 @@ if (-not $refuse) {
                     $oa.ToString()
                 }
             }
-            if (@($candidates | Where-Object { $_ -in @($ownCanon) }).Count) { $refuse = 'own public ip' }
+            # a readable file that yields NO own IP ({} or foreign field names)
+            # cannot prove anything either - fail closed like a missing file
+            if (-not @($ownCanon).Count) { $refuse = 'own-ip state empty (fail closed)' }
+            elseif (@($candidates | Where-Object { $_ -in @($ownCanon) }).Count) { $refuse = 'own public ip' }
         }
         catch { $refuse = 'own-ip state unreadable (fail closed)' }
     }
@@ -177,9 +182,19 @@ function Get-StampUtc($V) {
 }
 
 function Read-Ledger {
+    # $null = the ledger EXISTS but is unreadable or malformed; callers fail
+    # closed. A torn write used to parse as "no ledger" and re-zero the day's
+    # counters - an over-spend past the free-tier budget (review 2026-09-26).
+    # Housekeeping (state.psm1) repairs it at the next daily reset.
     $l = $null
     if (Test-Path -LiteralPath $ledgerFile) {
-        try { $l = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json } catch {}
+        try {
+            $l = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json
+            if ($null -eq $l) { return $null }                  # empty file or JSON null
+            foreach ($f in 'date', 'vt_today', 'abuse_today') { if (-not $l.PSObject.Properties[$f]) { return $null } }
+            if (-not $l.PSObject.Properties['vt_minute']) { $l | Add-Member -NotePropertyName vt_minute -NotePropertyValue @() }
+        }
+        catch { return $null }
     }
     $today = Get-Date -Format 'yyyy-MM-dd'
     if (-not $l -or $l.date -ne $today) {
@@ -191,7 +206,10 @@ function Read-Ledger {
 }
 
 function Write-Ledger($L) {
-    $L | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ledgerFile -Encoding utf8
+    # atomic: a kill (MCP 20 s cap) mid-write must not leave a torn file
+    $tmp = "$ledgerFile.$PID.tmp"
+    $L | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $tmp -Encoding utf8
+    [IO.File]::Move($tmp, $ledgerFile, $true)
 }
 
 # --- reserve (keys from env, injected by Tier 1 from DPAPI store) ------------
@@ -199,6 +217,9 @@ $abuseKey = $env:ABUSEIPDB_KEY
 $vtKey    = $env:VT_KEY
 $grant = Invoke-LedgerLocked {
     $l = Read-Ledger
+    if ($null -eq $l) {
+        Out-Result @{ error = 'quota ledger unreadable'; abuseipdb_note = 'lookup_unavailable'; virustotal_note = 'lookup_unavailable' }
+    }
     # stamp taken INSIDE the lock, right before the lookup: a stamp taken
     # before the lock wait would age the 60 s window early and let a 5th
     # call in within one real minute (review finding)
@@ -228,7 +249,7 @@ $spentVt = $false; $spentAb = $false
 if ($grant.ab) {
     try {
         $r = Invoke-RestMethod -TimeoutSec 6 -Method Get `
-            -Uri "https://api.abuseipdb.com/api/v2/check?ipAddress=$Ip&maxAgeInDays=90" `
+            -Uri "https://api.abuseipdb.com/api/v2/check?ipAddress=$([Uri]::EscapeDataString($Ip))&maxAgeInDays=90" `
             -Headers @{ Key = $abuseKey; Accept = 'application/json' }
         $result.abuseipdb = @{
             score            = $r.data.abuseConfidenceScore
@@ -245,7 +266,7 @@ else                    { $result['abuseipdb_note'] = 'quota_exhausted' }
 if ($grant.vt) {
     try {
         $r = Invoke-RestMethod -TimeoutSec 6 -Method Get `
-            -Uri "https://www.virustotal.com/api/v3/ip_addresses/$Ip" `
+            -Uri "https://www.virustotal.com/api/v3/ip_addresses/$([Uri]::EscapeDataString($Ip))" `
             -Headers @{ 'x-apikey' = $vtKey }
         $stats = $r.data.attributes.last_analysis_stats
         $result.virustotal = @{
@@ -270,6 +291,7 @@ if ($refundVt -or $refundAb) {
     # already-fetched answers
     $refunded = Invoke-LedgerLocked -BestEffort {
         $l = Read-Ledger
+        if ($null -eq $l) { return @{ skip = 'refund_skipped_ledger_unreadable' } }   # never rewrite a torn ledger
         # reserved before midnight, refunding after: the reservation lived in
         # yesterday's counters, which are gone - decrementing today's would
         # steal another call's reservation (review finding)
@@ -284,8 +306,9 @@ if ($refundVt -or $refundAb) {
         Write-Ledger $l
         @{ vt_today = $l.vt_today; abuse_today = $l.abuse_today }
     }
-    if ($refunded) { $counts = $refunded }
-    else { $result['quota_note'] = 'refund_skipped_ledger_busy' }
+    if ($null -eq $refunded)              { $result['quota_note'] = 'refund_skipped_ledger_busy' }
+    elseif ($refunded.ContainsKey('skip')) { $result['quota_note'] = $refunded.skip }
+    else                                   { $counts = $refunded }
 }
 $result.quota = @{
     vt_remaining_today    = [math]::Max(0, $vtPerDay - $counts.vt_today)

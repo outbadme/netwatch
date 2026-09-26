@@ -48,6 +48,8 @@ Assert-Equal 'loopback'   (Test-NonRoutableIp -Ip '::ffff:127.0.0.1')    'v4-map
 Assert-Equal 'cgnat'      (Test-NonRoutableIp -Ip '::ffff:100.64.0.5')   'v4-mapped cgnat'
 Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '167772161')           'decimal spelling of 10.0.0.1'
 Assert-Equal 'tunnel'     (Test-NonRoutableIp -Ip '2001:0:4136:e378::1') 'teredo refused'
+Assert-Equal 'site-local' (Test-NonRoutableIp -Ip 'fec0::1')             'deprecated site-local'
+Assert-Equal 'documentation' (Test-NonRoutableIp -Ip '2001:db8::1')      'RFC 3849 documentation range'
 # embedded IPv4 is NOT judged here: a 6to4/NAT64 address wrapping 127.x or
 # 169.254.x is a routable v6 destination, and 'loopback'/'link-local' would
 # turn it into silent local-noise in classify (review finding)

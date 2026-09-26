@@ -2,7 +2,7 @@
 # import-free Tier-2 tools and Tier 1 against drift. The copies exist on
 # purpose (each tool stays independently reviewable, see check-reputation.ps1
 # header / TIER2-CONTRACT 1.3); this file makes a one-sided edit fail loudly.
-#  1. Get-LinkPolicyError: textually identical in check-signature / hash-file
+#  1. Resolve-PolicyPath: textually identical in check-signature / hash-file
 #     (compared via the PowerShell AST, not grep).
 #  2. Ledger mutex name: same derivation in state.psm1 and check-reputation.
 #  3. IP lookup guards: NOT textually shared (Tier 1 = netutil/enrich
@@ -24,12 +24,12 @@ function Get-FunctionText($Ast, [string]$Name) {
     return ($f[0].Extent.Text -replace "`r`n", "`n")
 }
 
-# --- 1. Get-LinkPolicyError --------------------------------------------------
+# --- 1. Resolve-PolicyPath --------------------------------------------------
 $sigAst  = Get-Ast (Join-Path $src 'tier2\tools\check-signature.ps1')
 $hashAst = Get-Ast (Join-Path $src 'tier2\tools\hash-file.ps1')
-$a = Get-FunctionText $sigAst  'Get-LinkPolicyError'
-$b = Get-FunctionText $hashAst 'Get-LinkPolicyError'
-Assert-True ($a -ceq $b) 'Get-LinkPolicyError identical in check-signature.ps1 and hash-file.ps1'
+$a = Get-FunctionText $sigAst  'Resolve-PolicyPath'
+$b = Get-FunctionText $hashAst 'Resolve-PolicyPath'
+Assert-True ($a -ceq $b) 'Resolve-PolicyPath identical in check-signature.ps1 and hash-file.ps1'
 
 # --- 2. ledger mutex name derivation ------------------------------------------
 function Get-MutexExpr($Ast) {
@@ -57,7 +57,7 @@ $corpus = @(
     # tunnels
     '2001:0:4136:e378::1', '64:ff9b:1::1',
     # alternate spellings
-    '::ffff:10.0.0.1', '::ffff:8.8.8.8', '167772161', '0x0a000001', '3405803786', '2001:db8::1%5',
+    '::ffff:10.0.0.1', '::ffff:8.8.8.8', '167772161', '0x0a000001', '3405803786', '2001:db8::1%5', 'fec0::1',
     # own set
     '203.0.113.10', '5.6.7.8', '::ffff:5.6.7.8', '9.9.9.9',
     # embedded IPv4 (NAT64 / 6to4 / SIIT / IPv4-compatible)

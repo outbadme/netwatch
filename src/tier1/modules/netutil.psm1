@@ -94,6 +94,8 @@ function Test-NonRoutableIp {
         if ($addr.IsIPv6LinkLocal)                  { return 'link-local' }
         if ($addr.IsIPv6Multicast)                  { return 'multicast' }
         if (Test-IpInCidr -Ip $Ip -Cidr 'fc00::/7') { return 'ula' }
+        if (Test-IpInCidr -Ip $Ip -Cidr 'fec0::/10') { return 'site-local' }      # deprecated, never global
+        if (Test-IpInCidr -Ip $Ip -Cidr '2001:db8::/32') { return 'documentation' }  # RFC 3849, never routed
         if ($Ip -eq '::')                           { return 'reserved' }
         # Teredo embeds the client's (obfuscated) public IPv4 - never send it
         if (Test-IpInCidr -Ip $Ip -Cidr '2001::/32') { return 'tunnel' }

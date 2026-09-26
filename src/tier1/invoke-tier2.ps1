@@ -263,11 +263,16 @@ if (-not $proc.WaitForExit($capMs)) {
             exit 0
         }
         if ($v.PSObject.Properties['connections']) {
-            $seenKeys = @{}
-            $valid = @(@($v.connections) | Where-Object {
-                    (Test-ConnectionShape $_) -and $_.key -in $packetKeys -and
-                    -not $seenKeys.ContainsKey($_.key) -and ($seenKeys[$_.key] = $true)
-                })
+            # one entry per key; on a duplicate key 'suspicious' WINS. Keeping
+            # the first occurrence let [{K clean},{K suspicious}] - e.g. from
+            # an injected model - validate K as clean and suppress it (review
+            # finding 2026-09-26). An ordered map keeps the model's order.
+            $byKey = [ordered]@{}
+            foreach ($c in @($v.connections)) {
+                if (-not ((Test-ConnectionShape $c) -and $c.key -in $packetKeys)) { continue }
+                if (-not $byKey.Contains($c.key) -or $c.assessment -eq 'suspicious') { $byKey[$c.key] = $c }
+            }
+            $valid = @($byKey.Values)
             if ($valid.Count -and (Test-VerdictSchema ([pscustomobject]@{
                         verdict = 'CLEAN'; connections = $valid; summary = 'salvage-precheck' }))) {
                 $covered   = @($valid | ForEach-Object key)
@@ -315,6 +320,13 @@ if ($proc.ExitCode -ne 0) {
 }
 
 # --- parse + validate (F2/F24) ----------------------------------------------
+# the 429 envelope with exit 0 (not observed live; the CLI exits 1 today) must
+# not become "invalid output" -> instant retry into the same limit -> Tier 3
+$quota = Test-QuotaExhausted -Text $stdout
+if ($quota) {
+    Write-OpLog -Config $cfg -Level WARN -Message "tier2 quota exhausted with exit 0 (attempt $Attempt): $quota"
+    exit 6
+}
 $parsed = ConvertFrom-Tier2Stdout -Text $stdout
 if (-not $parsed) {
     Write-OpLog -Config $cfg -Level WARN -Message "tier2 output unparsable (attempt $Attempt): $(Get-StdoutSnippet $stdout)"

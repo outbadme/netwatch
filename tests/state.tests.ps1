@@ -147,6 +147,25 @@ try {
     Invoke-Housekeeping -Config $cfg
     $q = Get-Content $ledger -Raw | ConvertFrom-Json
     Assert-Equal 0 $q.vt_today 'free mutex -> reset happens'
+    Assert-Equal 0 @(Get-ChildItem (Split-Path $ledger) -Filter '*.tmp').Count 'atomic write leaves no temp file'
+
+    # a torn ledger is repaired AS EXHAUSTED for today, never re-zeroed
+    '{"date":"20' | Set-Content -LiteralPath $ledger
+    Invoke-Housekeeping -Config $cfg
+    $q = Get-Content $ledger -Raw | ConvertFrom-Json
+    Assert-Equal (Get-Date -Format 'yyyy-MM-dd') $q.date 'repaired ledger dated today'
+    Assert-Equal $cfg.reputation_quota.vt_per_day $q.vt_today 'repaired ledger: vt exhausted for today'
+    Assert-Equal $cfg.reputation_quota.abuseipdb_per_day $q.abuse_today 'repaired ledger: abuse exhausted for today'
+
+    # parseable but missing counters (the tool refuses it): repaired the same way
+    ('{"date":"' + (Get-Date -Format 'yyyy-MM-dd') + '"}') | Set-Content -LiteralPath $ledger
+    Invoke-Housekeeping -Config $cfg
+    $q = Get-Content $ledger -Raw | ConvertFrom-Json
+    Assert-Equal $cfg.reputation_quota.vt_per_day $q.vt_today 'counter-less ledger repaired as exhausted'
+    'null' | Set-Content -LiteralPath $ledger
+    Invoke-Housekeeping -Config $cfg
+    $q = Get-Content $ledger -Raw | ConvertFrom-Json
+    Assert-Equal $cfg.reputation_quota.abuseipdb_per_day $q.abuse_today 'JSON-null ledger repaired as exhausted'
 }
 finally {
     Remove-TestStateRoot $root

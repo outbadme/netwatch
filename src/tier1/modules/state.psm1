@@ -265,15 +265,36 @@ function Invoke-Housekeeping {
             return
         }
         $today = Get-Date -Format 'yyyy-MM-dd'
-        $reset = $true
-        if (Test-Path -LiteralPath $ledgerFile) {
-            $ledger = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json
-            $reset = ($ledger.date -ne $today)
+        $fresh = @{ date = $today; vt_today = 0; vt_minute = @(); abuse_today = 0 }
+        $write = $null
+        if (-not (Test-Path -LiteralPath $ledgerFile)) { $write = $fresh }
+        else {
+            $ledger = $null
+            try { $ledger = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json } catch {}
+            # same required fields the tool checks (Read-Ledger); a parseable
+            # ledger missing a counter is refused there too and would stay
+            # unusable until the next date roll
+            $malformed = $null -eq $ledger
+            if (-not $malformed) {
+                foreach ($f in 'date', 'vt_today', 'abuse_today') {
+                    if (-not $ledger.PSObject.Properties[$f]) { $malformed = $true }
+                }
+            }
+            if ($malformed) {
+                # torn/foreign ledger (the tool refuses lookups on it): repair it
+                # AS EXHAUSTED for today - re-zeroing mid-day could over-spend the
+                # free-tier budget; tomorrow's reset starts clean
+                $q = $Config.reputation_quota
+                $write = @{ date = $today; vt_today = $q.vt_per_day; vt_minute = @(); abuse_today = $q.abuseipdb_per_day }
+                Write-OpLog -Config $Config -Level WARN -Message 'quota ledger unreadable - rewritten as exhausted for today'
+            }
+            elseif ($ledger.date -ne $today) { $write = $fresh }
         }
-        if ($reset) {
-            @{ date = $today; vt_today = 0; vt_minute = @(); abuse_today = 0 } |
-                ConvertTo-Json | Set-Content -LiteralPath $ledgerFile -Encoding utf8
-            Write-OpLog -Config $Config -Level INFO -Message 'quota ledger reset'
+        if ($null -ne $write) {
+            $tmp = "$ledgerFile.$PID.tmp"                       # atomic, like the tool
+            $write | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding utf8
+            [IO.File]::Move($tmp, $ledgerFile, $true)
+            if ($write -eq $fresh) { Write-OpLog -Config $Config -Level INFO -Message 'quota ledger reset' }
         }
     }
     catch {
