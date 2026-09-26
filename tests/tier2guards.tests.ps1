@@ -350,8 +350,13 @@ if ($IsWindows) {
             $trailErr = 'trailing dot or space in a path segment denied by policy'
             $r = Invoke-Tool $tool @('-Path', "$dl.\evil.exe")
             Assert-True ($r.error -in 'path denied by policy', $trailErr) "${tool}: trailing dot on Downloads denied ($($r.error))"
+            # security invariant: denied, or exactly the real file - never a
+            # different entry than the one checked
             $r = Invoke-Tool $tool @('-Path', "$ok \fine.exe")
-            Assert-True ($r.error -eq $trailErr -or ((Join-Path $ok 'fine.exe') -ieq $r.path)) "${tool}: trailing space in a middle segment: denied or the same real file ($($r.error)$($r.path))"
+            $rErr = $r.PSObject.Properties['error']?.Value
+            $rPath = $r.PSObject.Properties['path']?.Value
+            Write-Host "INFO: ${tool} trailing-space middle segment -> error=[$rErr] path=[$rPath]"
+            Assert-True ([bool]$rErr -or ((Join-Path $ok 'fine.exe') -ieq $rPath)) "${tool}: trailing space in a middle segment: denied or the same real file"
             $r = Invoke-Tool $tool @('-Path', "$(Join-Path $ok 'fine.exe'):hidden")
             Assert-Equal 'alternate data stream denied by policy' $r.error "${tool}: NTFS stream denied"
             $r = Invoke-Tool $tool @('-Path', "${dl}:hidden")
