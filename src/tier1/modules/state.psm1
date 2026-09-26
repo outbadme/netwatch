@@ -271,7 +271,16 @@ function Invoke-Housekeeping {
         else {
             $ledger = $null
             try { $ledger = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json } catch {}
-            if ($null -eq $ledger -or -not $ledger.PSObject.Properties['date']) {
+            # same required fields the tool checks (Read-Ledger); a parseable
+            # ledger missing a counter is refused there too and would stay
+            # unusable until the next date roll
+            $malformed = $null -eq $ledger
+            if (-not $malformed) {
+                foreach ($f in 'date', 'vt_today', 'abuse_today') {
+                    if (-not $ledger.PSObject.Properties[$f]) { $malformed = $true }
+                }
+            }
+            if ($malformed) {
                 # torn/foreign ledger (the tool refuses lookups on it): repair it
                 # AS EXHAUSTED for today - re-zeroing mid-day could over-spend the
                 # free-tier budget; tomorrow's reset starts clean

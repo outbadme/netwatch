@@ -236,6 +236,9 @@ try {
             '{"date":"2026-01-01"}' | Set-Content $ledgerFile            # parses, but fields missing
             $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '8.8.8.8')
             Assert-Equal 'quota ledger unreadable' $r.error 'malformed ledger (missing fields) -> fail closed'
+            'null' | Set-Content $ledgerFile                             # valid JSON, not an object
+            $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '8.8.8.8')
+            Assert-Equal 'quota ledger unreadable' $r.error 'JSON-null ledger -> fail closed'
         }
         finally { Remove-Item Env:VT_KEY -ErrorAction SilentlyContinue }
         Assert-Equal 0 @(Get-ChildItem (Join-Path $root 'state') -Filter '*.tmp').Count 'no temp files left behind'

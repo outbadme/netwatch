@@ -190,6 +190,7 @@ function Read-Ledger {
     if (Test-Path -LiteralPath $ledgerFile) {
         try {
             $l = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json
+            if ($null -eq $l) { return $null }                  # empty file or JSON null
             foreach ($f in 'date', 'vt_today', 'abuse_today') { if (-not $l.PSObject.Properties[$f]) { return $null } }
             if (-not $l.PSObject.Properties['vt_minute']) { $l | Add-Member -NotePropertyName vt_minute -NotePropertyValue @() }
         }
