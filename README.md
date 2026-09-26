@@ -115,6 +115,10 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 `pwsh -NoProfile -File tests\run-tests.ps1` — self-contained harness, no
 Pester, no admin, no live Claude calls (Tier 2 is stubbed).
 
+CI (`.github/workflows/windows-tests.yml`) runs the same suite on a Windows
+runner in batches, not per push: when a PR is opened / reopened / marked
+ready, when the `run-windows-ci` label is added, or manually from Actions.
+
 ## License
 
 MIT (see `LICENSE`).
