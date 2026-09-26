@@ -68,6 +68,21 @@ try {
     Assert-NotNull $v.verdict.connections[0].proposed_whitelist_entry 'valid proposal preserved'
     Assert-True (Test-Path (Join-Path $root 'escalations\20260827-000001-stdout.json')) 'raw stdout kept (audit)'
 
+    # --- argv: prompt by path, command line far below cmd.exe's 8191 limit ---
+    # (first Windows CI run 2026-09-26: the inline prompt pushed the line to
+    # ~8.1K chars and the .cmd stub died before reading stdin)
+    $argsFile = [IO.Path]::GetFullPath((Join-Path $root 'stub-args.txt'))   # stub runs in another cwd
+    $env:STUB_ARGS_FILE = $argsFile
+    try { $rc = Invoke-Launcher 'clean' } finally { Remove-Item Env:STUB_ARGS_FILE -ErrorAction SilentlyContinue }
+    Assert-Equal 0 $rc 'clean run with argv recording exit 0'
+    $argv = @(Get-Content -LiteralPath $argsFile)
+    $i = [array]::IndexOf($argv, '--system-prompt-file')
+    Assert-True ($i -ge 0) 'launcher passes --system-prompt-file'
+    Assert-True ($argv[$i + 1] -like '*system-prompt.md') 'prompt passed by path'
+    Assert-False ($argv -contains '--system-prompt') 'no inline --system-prompt'
+    $cmdLen = ($argv -join ' ').Length
+    Assert-True ($cmdLen -lt 2000) "argv stays short ($cmdLen chars; cmd.exe limit 8191)"
+
     # --- alarm ---------------------------------------------------------------
     $rc = Invoke-Launcher 'alarm'
     Assert-Equal 0 $rc 'alarm run exit 0 (valid verdict)'

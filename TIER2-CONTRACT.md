@@ -133,7 +133,7 @@ endpoint), `none`.
   -p "Analyze the escalation packet provided on stdin per your system prompt." `
   --model sonnet `
   --output-format json `
-  --system-prompt "<content of src/tier2/system-prompt.md>"   # replaces default; loaded by launcher
+  --system-prompt-file <code_root>/src/tier2/system-prompt.md   # replaces default; by path, never inline
   --mcp-config src/tier2/mcp-config.json `
   --strict-mcp-config `                             # ignore user/project MCP configs
   --permission-mode dontAsk `
@@ -148,11 +148,10 @@ Notes for the implementer (doc-verified behaviors):
   The hard denial is the combination `--permission-mode dontAsk` (denies
   everything not allowed) + explicit `--disallowedTools` for every
   built-in (belt and suspenders; deny rules win over allow).
-- System prompt: `--system-prompt <string>` (replace) and
-  `--append-system-prompt-file <path>` (append) are doc-confirmed; a
-  replace-from-file flag is not — so the launcher loads
-  `system-prompt.md` into the `--system-prompt` string argument
-  (ArgumentList entry, no shell quoting involved).
+- System prompt: `--system-prompt-file <path>` (replace from file; accepted
+  by CLI 2.1.223 and 2.1.283, probed 2026-09-26). The prompt is NOT passed
+  inline: as a string argument it pushed the Windows command line past
+  cmd.exe's 8191-char limit, which an npm-installed `claude.cmd` shim hits.
 - `--output-format json` envelope carries `result` (the verdict JSON text)
   and `session_id` (needed by Tier 3). Exit code + envelope parsing rules
   in `src/tier1/invoke-tier2.ps1`.

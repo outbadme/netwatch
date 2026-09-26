@@ -28,9 +28,14 @@
 #             shape-invalid (observed live 2026-08-27 17:55:33Z); launcher
 #             must drop the proposal and keep the verdict
 # STUB_COUNT_FILE (optional): invocation counter for retry tests.
+# STUB_ARGS_FILE (optional): argv written one per line.
 param()
 $ErrorActionPreference = 'Stop'
 
+if ($env:STUB_ARGS_FILE) {
+    # argv as received (one per line) - lets tests check what the launcher sends
+    $args | Set-Content -LiteralPath $env:STUB_ARGS_FILE
+}
 if ($env:STUB_COUNT_FILE) {
     $n = if (Test-Path $env:STUB_COUNT_FILE) { [int](Get-Content $env:STUB_COUNT_FILE) } else { 0 }
     Set-Content -LiteralPath $env:STUB_COUNT_FILE -Value ($n + 1)

@@ -38,6 +38,12 @@ jobs:
         with:
           node-version: 20
 
+      # tier2.claude_exe 'auto' resolves claude via PATH (README requirement);
+      # the suite never calls it live - Tier 2 runs against tests/stubs
+      - name: Claude Code CLI on PATH
+        shell: pwsh
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: MCP server dependencies
         shell: pwsh
         run: npm ci --prefix src/tier2/mcp-server

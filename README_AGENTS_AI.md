@@ -27,8 +27,8 @@ never in the repo, never in git):
 - src/tier2/tools/*.ps1         the ONLY four Tier-2 capabilities, read-only:
                                 check-signature, hash-file, check-reputation,
                                 check-process-lineage
-- src/tier2/system-prompt.md    fixed Tier-2 prompt (loaded into
-                                --system-prompt as a string)
+- src/tier2/system-prompt.md    fixed Tier-2 prompt (passed by path via
+                                --system-prompt-file, never inline)
 - src/tier3/launch-tier3.ps1    fresh interactive claude session in a
                                 visible pwsh window on ALARM (session id is
                                 informational only — D7, amended)
