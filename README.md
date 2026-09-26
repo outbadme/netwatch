@@ -42,6 +42,7 @@ Install-Module BurntToast -Scope CurrentUser -MinimumVersion 1.1.0 -Force # toas
 npm ci --prefix src\tier2\mcp-server                                      # MCP server deps
 pwsh -File install\init-deploy.ps1                                        # machine config + state + whitelist seed
 pwsh -File install\register-task.ps1                                      # logon task
+pwsh -File install\enable-sysmon.ps1 -SysmonExe <path>\Sysmon64.exe      # optional, elevated: see below
 Start-ScheduledTask -TaskName netwatch-tier1
 ```
 
@@ -100,6 +101,11 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 
 ## Honest limitations
 
+- Connections are polled every 30 s. A connection that opens and closes
+  between two polls is invisible to polling; with Sysmon installed
+  (`install/enable-sysmon.ps1`, config `config/sysmon-netwatch.xml` - only
+  NetworkConnect is logged) netwatch also drains Sysmon event 3 each tick
+  and sees those. Without Sysmon every packet says `sysmon: unavailable`.
 - Whitelist entries match on the process NAME. For well-known names Tier 1
   pins the identity (`src/tier1/modules/identity.psm1`): `svchost`,
   `explorer`, `taskhostw`, `runtimebroker`, `backgroundtaskhost` must run

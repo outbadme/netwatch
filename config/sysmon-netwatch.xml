@@ -1,0 +1,31 @@
+<!--
+  sysmon-netwatch.xml - minimal Sysmon config for netwatch: ONLY NetworkConnect
+  (event 3), everything else off. Applied by install/enable-sysmon.ps1.
+  schemaversion 4.50 is understood by Sysmon 13 and newer.
+
+  Event types Sysmon would log by default (process create/terminate, file
+  create time, driver load) get an empty include group = log nothing.
+  NetworkConnect uses onmatch="exclude": every connection is logged except
+  loopback, which classify.psm1 treats as local noise anyway.
+
+  If you already run Sysmon with your own config (e.g. SwiftOnSecurity /
+  olafhartong), do NOT apply this file - make sure your config logs
+  NetworkConnect for TCP and netwatch will read it as is.
+-->
+<Sysmon schemaversion="4.50">
+  <HashAlgorithms>sha256</HashAlgorithms>
+  <EventFiltering>
+    <RuleGroup name="netwatch-off" groupRelation="or">
+      <ProcessCreate onmatch="include" />
+      <FileCreateTime onmatch="include" />
+      <ProcessTerminate onmatch="include" />
+      <DriverLoad onmatch="include" />
+    </RuleGroup>
+    <RuleGroup name="netwatch-network" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <DestinationIp condition="is">127.0.0.1</DestinationIp>
+        <DestinationIp condition="is">::1</DestinationIp>
+      </NetworkConnect>
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>
