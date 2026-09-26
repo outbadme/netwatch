@@ -287,7 +287,8 @@ function Invoke-Housekeeping {
 
 function Get-LedgerMutexName {
     # MUST stay identical to the derivation in src/tier2/tools/check-reputation.ps1
-    # (duplicated there on purpose: that file stays import-free).
+    # (duplicated there on purpose: that file stays import-free; drift is
+    # caught by tests/duplication-sync.tests.ps1).
     param([Parameter(Mandatory)] [string]$LedgerFile)
     return 'netwatch-repquota-' + [Convert]::ToHexString(
         [System.Security.Cryptography.SHA256]::HashData(

@@ -2,7 +2,8 @@
 # pipeline where AbuseIPDB/VirusTotal are called (GOAL: reputation only on the
 # already-filtered residual). READ-ONLY except its own quota ledger.
 # Guards here are defense-in-depth DUPLICATES of Tier-1's exclusions (no module
-# import on purpose - this file must stay independently reviewable) and are
+# import on purpose - this file must stay independently reviewable; parity
+# with Tier 1 is enforced by tests/duplication-sync.tests.ps1) and are
 # NOT model-overridable: a refusal is a normal JSON answer, not an error.
 # Env: NETWATCH_STATE (state root), ABUSEIPDB_KEY / VT_KEY (optional),
 #      NETWATCH_VT_PER_DAY / NETWATCH_VT_PER_MIN / NETWATCH_ABUSE_PER_DAY

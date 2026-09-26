@@ -25,7 +25,8 @@ if ("$driveType" -in 'Network', 'NoRootDirectory', 'Unknown') { Out-Result @{ er
 # finding). Every component is inspected BEFORE the path is opened; each link
 # is followed ONE hop at a time and its target vetted before the next read,
 # so no remote path is ever touched. Reading reparse data is local I/O.
-# Kept identical in check-signature.ps1 (tools stay import-free).
+# Kept identical in check-signature.ps1 (tools stay import-free); drift is
+# caught by tests/duplication-sync.tests.ps1.
 function Get-LinkPolicyError([string]$Full) {
     $cur = $Full.Substring(0, 3)
     foreach ($part in $Full.Substring(3).Split('\', [StringSplitOptions]::RemoveEmptyEntries)) {

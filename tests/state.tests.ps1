@@ -134,8 +134,7 @@ try {
         [System.Security.Cryptography.SHA256]::HashData(
             [Text.Encoding]::UTF8.GetBytes($ledger.ToLowerInvariant()))).Substring(0, 16)
     Assert-Equal $expectName (Get-LedgerMutexName -LedgerFile $ledger) 'mutex name matches the tool derivation'
-    $toolSrc = Get-Content "$PSScriptRoot\..\src\tier2\tools\check-reputation.ps1" -Raw
-    Assert-True ($toolSrc.Contains("'netwatch-repquota-' + [Convert]::ToHexString(")) 'tool uses the same mutex prefix/derivation'
+    # tool-side derivation parity: tests/duplication-sync.tests.ps1 (AST)
     '{"date":"2020-01-01","vt_today":7,"vt_minute":[],"abuse_today":5}' | Set-Content -LiteralPath $ledger
     # held from ANOTHER process (a mutex is re-entrant for its own thread)
     $holder = Start-Process pwsh -PassThru -NoNewWindow -ArgumentList '-NoProfile', '-File',
