@@ -140,7 +140,7 @@ endpoint), `none`.
   --allowedTools "mcp__netwatch__check_signature,mcp__netwatch__hash_file,mcp__netwatch__check_reputation,mcp__netwatch__check_process_lineage" `
   --disallowedTools "Bash,Read,Write,Edit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite" `
   --max-turns 25 `
-  < packet.json  > stdout.json 2> stderr.txt        # via Process redirects, see skeleton
+  < packet.json  > stdout.json 2> stderr.txt        # via Process redirects, see src/tier1/invoke-tier2.ps1
 ```
 
 Notes for the implementer (doc-verified behaviors):
@@ -155,7 +155,7 @@ Notes for the implementer (doc-verified behaviors):
   (ArgumentList entry, no shell quoting involved).
 - `--output-format json` envelope carries `result` (the verdict JSON text)
   and `session_id` (needed by Tier 3). Exit code + envelope parsing rules
-  in `skeletons/invoke-tier2.ps1`.
+  in `src/tier1/invoke-tier2.ps1`.
 - Working directory: a dedicated runtime dir (state root), NOT the code
   repo — keeps session files and any accidental relative paths inside the
   sandbox area.

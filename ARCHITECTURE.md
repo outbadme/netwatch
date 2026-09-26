@@ -4,7 +4,7 @@ Status: design complete, ready for implementer.
 Scope: per the original design brief (2026-08-26) and `README.md` (scope rules).
 Companion documents: `DECISIONS.md` (rationale for every open item),
 `TIER2-CONTRACT.md` (Tier-2 tool surface), `FAILURE-MATRIX.md` (edge cases),
-`schemas/` (JSON Schemas), `skeletons/` (PowerShell/Node skeletons).
+`schemas/` (JSON Schemas), `src/` (implementation).
 
 All PowerShell in this system runs under pwsh 7
 (`C:\Program Files\PowerShell\7\pwsh.exe`) — never `powershell.exe` 5.1
@@ -229,7 +229,7 @@ stdout/stderr redirected to files. Then:
   with reason `tier2_failed` (fail loud, never fail silent).
 
 Exact command line, tool restriction flags, and MCP config: see
-`TIER2-CONTRACT.md`. Concrete cap code: `skeletons/invoke-tier2.ps1`.
+`TIER2-CONTRACT.md`. Concrete cap code: `src/tier1/invoke-tier2.ps1`.
 
 ## 4. Tier 2 — headless analyst (summary; full contract in TIER2-CONTRACT.md)
 

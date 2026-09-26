@@ -45,7 +45,7 @@ TIER2-CONTRACT.md, FAILURE-MATRIX.md.
 | Edge cases F1–F24 | `FAILURE-MATRIX.md` |
 | Schemas (whitelist / packet / verdict / config) | `schemas/*.json` |
 | Seed whitelist (GOAL baseline) + example config | `config/` |
-| pwsh/Node skeletons (collector, cap launcher, toast, tier3, 4 tools, MCP server) | `skeletons/` |
+| Implementation (collector, cap launcher, toast, tier3, 4 tools, MCP server) | `src/` (the design-pass skeletons were removed once superseded) |
 
 ## Open risks (for the implementer)
 
