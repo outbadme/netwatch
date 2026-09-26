@@ -120,6 +120,46 @@ try {
             Remove-Item Env:VT_KEY, Env:ABUSEIPDB_KEY -ErrorAction SilentlyContinue
         }
 
+        # --- vt_minute stamp is taken INSIDE the lock, after the wait ---------
+        # test holds the ledger for ~600 ms (< the 1 s wait), then releases; the
+        # stamp in the reservation must not predate the release
+        Remove-Item -LiteralPath $ledgerFile -Force -ErrorAction SilentlyContinue
+        $hole = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        $hole.Start()
+        $savedProxy = $env:HTTPS_PROXY
+        $env:HTTPS_PROXY = "http://127.0.0.1:$($hole.LocalEndpoint.Port)"
+        $env:VT_KEY = 'bogus-test-key'
+        $env:NETWATCH_LEDGER_WAIT_MS = '10000'   # tool must outwait the held lock here
+        $m = [System.Threading.Mutex]::new($true, $mutexName)
+        $owned = $true
+        try {
+            $psi = [System.Diagnostics.ProcessStartInfo]::new((Get-Command pwsh).Source)
+            foreach ($a in '-NoProfile', '-File', (Join-Path $tools 'check-reputation.ps1'), '-Ip', '8.8.8.8') { $psi.ArgumentList.Add($a) }
+            $psi.RedirectStandardOutput = $true
+            $psi.UseShellExecute = $false
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $outTask = $p.StandardOutput.ReadToEndAsync()
+            Start-Sleep -Seconds 3          # pwsh startup: tool is now waiting on the mutex
+            Start-Sleep -Milliseconds 600
+            $released = [datetime]::UtcNow
+            $m.ReleaseMutex(); $owned = $false
+            $deadline = [datetime]::UtcNow.AddSeconds(10)
+            while (-not (Test-Path -LiteralPath $ledgerFile) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 20 }
+            $l = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json
+            $st = [datetime]::ParseExact([string]@($l.vt_minute)[0], 'yyyyMMdd\THHmmssfffffff\Z',
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]'AssumeUniversal, AdjustToUniversal')
+            Assert-True ($st -ge $released.AddMilliseconds(-50)) "stamp $($st.ToString('o')) not older than lock release $($released.ToString('o'))"
+            $null = $p.WaitForExit(20000)
+            $null = $outTask.Result
+        }
+        finally {
+            if ($owned) { $m.ReleaseMutex() }
+            $m.Dispose(); $hole.Stop()
+            Remove-Item Env:VT_KEY, Env:NETWATCH_LEDGER_WAIT_MS -ErrorAction SilentlyContinue
+            if ($savedProxy) { $env:HTTPS_PROXY = $savedProxy } else { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue }
+        }
+
         # --- busy ledger AFTER the lookup: answer kept, refund skipped --------
         # The VT call goes to a local black-hole proxy (accepts, never
         # answers) so it hangs for its 6 s timeout - a deterministic window in

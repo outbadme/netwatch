@@ -193,9 +193,12 @@ function Write-Ledger($L) {
 # --- reserve (keys from env, injected by Tier 1 from DPAPI store) ------------
 $abuseKey = $env:ABUSEIPDB_KEY
 $vtKey    = $env:VT_KEY
-$stamp = [datetime]::UtcNow.ToString($stampFormat, [Globalization.CultureInfo]::InvariantCulture)
 $grant = Invoke-LedgerLocked {
     $l = Read-Ledger
+    # stamp taken INSIDE the lock, right before the lookup: a stamp taken
+    # before the lock wait would age the 60 s window early and let a 5th
+    # call in within one real minute (review finding)
+    $script:stamp = [datetime]::UtcNow.ToString($stampFormat, [Globalization.CultureInfo]::InvariantCulture)
     $vtAllowed = ($l.vt_today -lt $vtPerDay) -and (@($l.vt_minute).Count -lt $vtPerMin)
     $abAllowed = ($l.abuse_today -lt $abPerDay)
     $g = @{ vtAllowed = $vtAllowed; abAllowed = $abAllowed; vt = $false; ab = $false }
@@ -207,6 +210,7 @@ $grant = Invoke-LedgerLocked {
     if ($abuseKey -and $abAllowed) { $l.abuse_today++; $g.ab = $true }
     if ($g.vt -or $g.ab) { Write-Ledger $l }
     $g.vt_today = $l.vt_today; $g.abuse_today = $l.abuse_today   # snapshot for the report
+    $g.date = $l.date                                            # refund applies to THIS day only
     $g
 }
 if (-not $grant.vtAllowed -and -not $grant.abAllowed) { Out-Result @{ quota_exhausted = $true } }
@@ -262,6 +266,12 @@ if ($refundVt -or $refundAb) {
     # already-fetched answers
     $refunded = Invoke-LedgerLocked -BestEffort {
         $l = Read-Ledger
+        # reserved before midnight, refunding after: the reservation lived in
+        # yesterday's counters, which are gone - decrementing today's would
+        # steal another call's reservation (review finding)
+        if ($l.date -ne $grant.date) {
+            return @{ vt_today = $l.vt_today; abuse_today = $l.abuse_today }
+        }
         if ($refundVt) {
             $l.vt_today = [math]::Max(0, $l.vt_today - 1)
             $l.vt_minute = @(@($l.vt_minute) | Where-Object { -not ($_ -is [string] -and $_ -eq $stamp) })
