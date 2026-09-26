@@ -88,8 +88,19 @@ else {
     else {
         Write-Host "installing Sysmon $v with the netwatch config"
         & $SysmonExe -accepteula -i $cfgFile
+        # Known Sysmon installer failure ("wevtutil.exe returned failure /
+        # Event manifest installation failed ... The operation completed
+        # successfully"): the first install fails, leaves NO service behind,
+        # and the same command then succeeds (reported for Windows Server
+        # 2025; seen with 15.22 on the GitHub windows-latest runner). One
+        # retry, only when nothing was installed.
+        if ($LASTEXITCODE -ne 0 -and -not (Get-Service -Name 'Sysmon64', 'Sysmon' -ErrorAction SilentlyContinue)) {
+            Write-Warning "Sysmon install exited $LASTEXITCODE with no service installed - retrying once"
+            & $SysmonExe -accepteula -i $cfgFile
+        }
     }
     if ($LASTEXITCODE -ne 0) { throw "Sysmon exited $LASTEXITCODE" }
+    if (-not (Get-Service -Name 'Sysmon64', 'Sysmon' -ErrorAction SilentlyContinue)) { throw 'Sysmon reported success but no Sysmon service exists' }
 }
 
 # at least 64 MB, same as the DNS-Client channel (a larger operator setting
