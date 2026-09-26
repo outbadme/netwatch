@@ -39,6 +39,9 @@ JSON text content. Common hard denials inside every tool (enforced in the
 (UNC `\\host\share`, `//host/share`, `\\?\`, `\\.\` device paths, and mapped
 network drives) — refused before any filesystem call, because touching one
 opens an SMB session (network egress + the user's NTLM hash to that host);
+symlinks/junctions on the path are followed one hop at a time from their
+reparse data (local I/O) and denied when a target is non-local or under
+Downloads, before the path itself is ever opened;
 any write/modify/delete operation (none exist in the scripts at all).
 
 ### 1.1 `check_signature`

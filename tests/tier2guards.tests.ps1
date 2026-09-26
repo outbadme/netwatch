@@ -229,6 +229,49 @@ if ($IsWindows) {
         $r = Invoke-Tool $tool @('-Path', (Join-Path $tools $tool))
         Assert-False ($r.PSObject.Properties['error']) "$tool accepts a local drive path"
     }
+
+    # --- reparse points: links are vetted hop by hop before any open --------
+    $lroot = New-TestStateRoot
+    try {
+        # junction (no admin needed) into a Downloads-shaped directory
+        $dl = Join-Path $lroot ('Users\someone\' + 'Down' + 'loads')
+        $null = New-Item -ItemType Directory -Force -Path $dl
+        'x' | Set-Content (Join-Path $dl 'evil.exe')
+        $j = Join-Path $lroot 'innocent'
+        $null = New-Item -ItemType Junction -Path $j -Target $dl
+        # local non-Downloads junction still works
+        $ok = Join-Path $lroot 'okdir'
+        $null = New-Item -ItemType Directory -Force -Path $ok
+        'y' | Set-Content (Join-Path $ok 'fine.exe')
+        $j2 = Join-Path $lroot 'okjunction'
+        $null = New-Item -ItemType Junction -Path $j2 -Target $ok
+        # symlink to a UNC share: needs SeCreateSymbolicLinkPrivilege (admin
+        # or Developer Mode); .NET does not touch the target when creating it
+        $uncLink = Join-Path $lroot 'share'
+        $haveUnc = $true
+        try { $null = [IO.Directory]::CreateSymbolicLink($uncLink, '\\attacker.invalid\share') }
+        catch { $haveUnc = $false; Write-Host "SKIP: symlink-to-UNC case (no symlink privilege: $($_.Exception.Message))" -ForegroundColor Yellow }
+
+        foreach ($tool in 'check-signature.ps1', 'hash-file.ps1') {
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $j 'evil.exe'))
+            Assert-Equal 'path denied by policy' $r.error "${tool}: junction into Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $j2 'fine.exe'))
+            Assert-False ($r.PSObject.Properties['error']) "${tool}: local junction allowed"
+            if ($haveUnc) {
+                $r = Invoke-Tool $tool @('-Path', (Join-Path $uncLink 'x.exe'))
+                Assert-Equal 'network or device path denied by policy' $r.error "${tool}: symlink to UNC denied"
+            }
+        }
+    }
+    finally {
+        foreach ($lnk in 'innocent', 'okjunction', 'share') {
+            $lp = Join-Path $lroot $lnk
+            # no Test-Path: it would follow the UNC link. Delete removes the
+            # link itself, never its target.
+            try { [IO.Directory]::Delete($lp) } catch {}
+        }
+        Remove-TestStateRoot $lroot
+    }
 }
 
 Complete-Tests
