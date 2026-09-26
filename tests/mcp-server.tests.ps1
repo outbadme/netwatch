@@ -8,8 +8,8 @@
 # so the integration test cannot run there. The PRIVATE repo has deps
 # installed and always exercises this file for real. Skip loudly, not silently.
 if (-not (Test-Path "$PSScriptRoot\..\src\tier2\mcp-server\node_modules")) {
-    Write-Host 'NOTE: mcp-server node_modules not installed (mirror/fresh clone) - skipped; npm ci in src/tier2/mcp-server enables it.'
-    exit 0
+    Skip-Test 'mcp-server node_modules not installed (mirror/fresh clone) - npm ci in src/tier2/mcp-server enables it'
+    Complete-Tests
 }
 
 $server = Resolve-Path "$PSScriptRoot\..\src\tier2\mcp-server\server.mjs"

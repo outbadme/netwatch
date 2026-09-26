@@ -90,10 +90,13 @@ $root = New-TestStateRoot
 try {
     $cfg = Get-NetwatchConfig -Path (New-TestConfig -StateRoot $root)
     Initialize-StateRoot -Config $cfg
-    if (-not $IsWindows) {
+    # no Sysmon here (Linux, or a Windows machine/runner without the service)
+    $sysmonSvc = if ($IsWindows) { Get-Service -Name 'Sysmon64', 'Sysmon' -ErrorAction SilentlyContinue } else { $null }
+    if (-not $sysmonSvc) {
         Assert-Equal 'unavailable' (Test-SysmonAvailable) 'no Sysmon channel -> unavailable'
         Assert-Equal 0 @(Read-SysmonConnections -Config $cfg).Count 'reader returns nothing, does not throw'
     }
+    else { Write-Host "INFO: Sysmon installed here - live health: $(Test-SysmonAvailable)" }
 
     # --- end to end: short-lived impostor seen only by Sysmon -------------------
     # svchost name + Temp image: identity mismatch -> residual (not the 7680

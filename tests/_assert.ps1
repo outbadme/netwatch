@@ -102,8 +102,26 @@ function Remove-TestStateRoot {
     Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+$script:SkipCount = 0
+
+function Skip-Test {
+    # A case that cannot run on this machine (missing privilege, feature
+    # disabled, deps not installed). Counted and reported, never silent:
+    # run-tests.ps1 lists every skip, and with NETWATCH_REQUIRE_ALL=1 (CI) a
+    # skip is a failure - a security test that did not run has not passed.
+    param([Parameter(Mandatory)] [string]$Reason)
+    $script:SkipCount++
+    $file = Split-Path -Leaf ($MyInvocation.PSCommandPath ?? $PSCommandPath)
+    if ($env:NETWATCH_REQUIRE_ALL -eq '1') { throw "required case skipped: $Reason" }
+    Write-Host "SKIP: $Reason" -ForegroundColor Yellow
+    if ($env:NETWATCH_SKIP_LOG) {
+        try { Add-Content -LiteralPath $env:NETWATCH_SKIP_LOG -Value "${file}: $Reason" -Encoding utf8 } catch {}
+    }
+}
+
 function Complete-Tests {
     # Call as the last line of a test file.
-    Write-Host "OK: $script:AssertCount assertions passed" -ForegroundColor Green
+    $sk = if ($script:SkipCount) { ", $($script:SkipCount) skipped" } else { '' }
+    Write-Host "OK: $script:AssertCount assertions passed$sk" -ForegroundColor Green
     exit 0
 }

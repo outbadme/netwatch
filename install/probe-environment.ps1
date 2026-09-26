@@ -2,10 +2,23 @@
 # Reports presence/versions of every external dependency the pipeline needs.
 # Safe to run as normal user; changes nothing.
 # Jail rule: no literal outside-repo paths here — PATH lookup / env refs only.
+#
+# -Strict: exit 1 when anything is below its minimum or missing (CI, deploy
+# gates); -AllowMissing <names> tolerates those components being ABSENT
+# (never too old). Without -Strict the report is informational (exit 0).
+#
+# #Requires is 7.0 on purpose (the rest of netwatch needs 7.6): this probe
+# must still run on an outdated pwsh to REPORT it as outdated.
 
-#Requires -Version 7.6
+#Requires -Version 7.0
+param(
+    [switch]$Strict,
+    [string[]]$AllowMissing = @()
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
+# 'pwsh -File' passes 'a,b' as ONE string: accept comma lists
+$AllowMissing = @($AllowMissing | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 $result = [ordered]@{}
 
@@ -34,6 +47,28 @@ catch {
     $result.dns_etw = 'FAIL: ' + $_.Exception.Message
 }
 
+# MCP server dependencies (npm ci in src/tier2/mcp-server): Tier 2 has no
+# tools without them
+$mcpDir = Join-Path $PSScriptRoot '..\src\tier2\mcp-server'
+if (-not (Test-Path -LiteralPath (Join-Path $mcpDir 'node_modules'))) { $result.mcp_deps = 'missing' }
+elseif (-not (Get-Command npm -ErrorAction SilentlyContinue)) { $result.mcp_deps = 'unchecked (npm not on PATH)' }
+else {
+    $null = & npm ls --prefix $mcpDir --omit=dev 2>&1
+    $result.mcp_deps = if ($LASTEXITCODE -eq 0) { 'ok' } else { "npm ls exit $LASTEXITCODE (missing/invalid packages)" }
+}
+
+# Sysmon is optional; when installed it must be new enough for the netwatch
+# config (config/sysmon-netwatch.xml)
+$result.sysmon_version = $null
+if ($IsWindows) {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='Sysmon64' OR Name='Sysmon'" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($svc -and $svc.PathName) {
+        $exe = $svc.PathName.Trim('"')
+        try { $result.sysmon_version = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion } catch {}
+    }
+}
+
 try {
     $result.tcp_sample_count = @(Get-NetTCPConnection -State Established -ErrorAction Stop).Count
 }
@@ -51,14 +86,28 @@ $result.is_admin = $pr.IsInRole([System.Security.Principal.WindowsBuiltInRole]::
 function ConvertTo-Ver([string]$s) {
     if ($s -match '(\d+\.\d+(\.\d+)?)') { return [version]$Matches[1] } else { return $null }
 }
-$min = [ordered]@{ pwsh = '7.6'; node = '24.0'; claude = '2.1.283'; burnttoast = '1.1.0' }
+$min = [ordered]@{ pwsh = '7.6'; node = '24.0'; claude = '2.1.283'; burnttoast = '1.1.0'; sysmon = '15.0' }
 $have = @{
     pwsh = ConvertTo-Ver $result.pwsh_version; node = ConvertTo-Ver $result.node_version
     claude = ConvertTo-Ver $result.claude_version; burnttoast = ConvertTo-Ver $result.burnttoast_version
+    sysmon = ConvertTo-Ver $result.sysmon_version
 }
+$optional = @('sysmon')                       # absent is fine, too old is not
 $result.below_minimum = @(foreach ($k in $min.Keys) {
-        if ($null -eq $have[$k]) { "${k}: missing (min $($min[$k]))" }
+        if ($null -eq $have[$k]) {
+            if ($k -notin $optional -and $k -notin $AllowMissing) { "${k}: missing (min $($min[$k]))" }
+        }
         elseif ($have[$k] -lt [version]$min[$k]) { "${k}: $($have[$k]) < $($min[$k])" }
+    }
+    # -AllowMissing covers only an ABSENT node_modules; 'unchecked' (no npm)
+    # and an npm ls failure are unverified installs, always gaps
+    if ($result.mcp_deps -ne 'ok' -and -not ($result.mcp_deps -eq 'missing' -and 'mcp_deps' -in $AllowMissing)) {
+        "mcp_deps: $($result.mcp_deps)"
     })
 
 [pscustomobject]$result | ConvertTo-Json
+if ($Strict -and $result.below_minimum.Count) {
+    Write-Host "probe: below minimum / missing: $($result.below_minimum -join '; ')" -ForegroundColor Red
+    exit 1
+}
+exit 0

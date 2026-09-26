@@ -11,7 +11,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$entry = Join-Path $repoRoot 'src\tier1\netwatch.ps1'
+# the #Requires-free launcher: an outdated pwsh is reported (bootstrap.log +
+# toast) instead of the task failing silently on netwatch.ps1's #Requires
+$entry = Join-Path $repoRoot 'src\tier1\start-netwatch.ps1'
 $pwshExe = (Get-Command pwsh).Source
 
 $action = New-ScheduledTaskAction -Execute $pwshExe `

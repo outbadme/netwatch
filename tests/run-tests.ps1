@@ -12,6 +12,9 @@ $files = @(Get-ChildItem -Path $PSScriptRoot -Filter "$Filter.tests.ps1" | Sort-
 if (-not $files) { Write-Host "no test files match '$Filter'"; exit 1 }
 
 $failed = @()
+# every Skip-Test lands here (children inherit the env var)
+$env:NETWATCH_SKIP_LOG = [IO.Path]::Combine([IO.Path]::GetTempPath(), "netwatch-skips-$PID.log")
+Remove-Item -LiteralPath $env:NETWATCH_SKIP_LOG -ErrorAction SilentlyContinue
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 foreach ($f in $files) {
     Write-Host "=== $($f.Name) ===" -ForegroundColor Cyan
@@ -21,6 +24,12 @@ foreach ($f in $files) {
 $sw.Stop()
 
 Write-Host ''
+$skips = @(if (Test-Path -LiteralPath $env:NETWATCH_SKIP_LOG) { Get-Content -LiteralPath $env:NETWATCH_SKIP_LOG })
+Remove-Item -LiteralPath $env:NETWATCH_SKIP_LOG -ErrorAction SilentlyContinue
+if ($skips) {
+    Write-Host "SKIPPED ($($skips.Count)):" -ForegroundColor Yellow
+    foreach ($l in $skips) { Write-Host "  $l" -ForegroundColor Yellow }
+}
 if ($failed) {
     Write-Host ("FAILED ({0}/{1}): {2}" -f $failed.Count, $files.Count, ($failed -join ', ')) -ForegroundColor Red
     exit 1

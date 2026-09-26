@@ -8,6 +8,8 @@
 #   - manually: Actions -> "windows-tests" -> Run workflow (any branch; the
 #     button appears once this file is on the default branch).
 # A newer run for the same ref cancels an older one still in flight.
+# Actions are pinned to full commit SHAs (tag in the trailing comment);
+# Dependabot (.github/dependabot.yml) proposes the bumps.
 
 name: windows-tests
 
@@ -27,16 +29,22 @@ jobs:
   tests:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'run-windows-ci') ||
-      (github.event.action != 'labeled' && !github.event.pull_request.draft)
+      (github.event.pull_request.head.repo.full_name == github.repository && (
+        (github.event.action == 'labeled' && github.event.label.name == 'run-windows-ci') ||
+        (github.event.action != 'labeled' && !github.event.pull_request.draft)))
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      # fork PRs are skipped above: their code would run on this runner
+      # with the global npm install below; a maintainer re-runs them from a
+      # branch here (workflow_dispatch) after reading the diff
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       # newest LTS Node (24 today, 26 from 2026-10-28); engines.node >= 24.
       # The npm cache is keyed on the MCP server lockfile
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: lts/*
           cache: npm
@@ -50,13 +58,30 @@ jobs:
 
       - name: MCP server dependencies
         shell: pwsh
-        run: npm ci --prefix src/tier2/mcp-server
+        run: npm ci --ignore-scripts --prefix src/tier2/mcp-server   # no dependency runs code at install
 
       # versions on record for every run, checked against the documented minimums
       - name: Environment versions
         shell: pwsh
-        run: pwsh -NoProfile -File install/probe-environment.ps1
+        run: pwsh -NoProfile -File install/probe-environment.ps1 -Strict -AllowMissing burnttoast
 
+      # every case must run here: a skipped case (no symlink privilege, no
+      # node_modules, 8.3 disabled) fails the run instead of passing quietly
       - name: Test suite
         shell: pwsh
+        env:
+          NETWATCH_REQUIRE_ALL: '1'
         run: pwsh -NoProfile -File tests/run-tests.ps1
+
+      # live Sysmon, AFTER the suite (which covers the no-Sysmon path). It
+      # installs the real driver (hosted runners are disposable) and checks
+      # enable-sysmon.ps1's signer/version gate + config, read back through
+      # sysmon.psm1. Downloaded from Microsoft; enable-sysmon verifies the
+      # Authenticode signer before running it.
+      - name: Sysmon live
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'Sysmon.zip'
+          Invoke-WebRequest -Uri 'https://download.sysinternals.com/files/Sysmon.zip' -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'sysmon') -Force
+          pwsh -NoProfile -File tests/ci/sysmon-live.ps1 -SysmonExe (Join-Path $env:RUNNER_TEMP 'sysmon\Sysmon64.exe')
