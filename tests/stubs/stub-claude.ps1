@@ -12,6 +12,8 @@
 #             came) - salvage must accept the full verdict (D9)
 #   hangpartial  - prints an envelope whose verdict covers ONLY the first
 #             packet key, flushes, then hangs: per-connection salvage
+#   hangdupe - CLEAN verdict that answers the first key twice (clean, then
+#             suspicious), then hangs: salvage must let suspicious win
 #   hangnosummary - all keys individually valid but the aggregate shape fails
 #             (summary missing), then hangs: full per-connection coverage with
 #             zero uncovered keys (reviewer finding M2, 2026-08-28)
@@ -20,6 +22,7 @@
 #             session-limit rejection (is_error/api_error_status/result) -
 #             must be classified as quota_exhausted, never retried, never
 #             escalated to Tier 3
+#   quota0  - the quota envelope with exit 0 (must still be exit 6, not retried)
 #   cleanfail - valid CLEAN envelope but exit 1 (F2: nonzero exit = failed run)
 #   fenced  - valid CLEAN verdict wrapped in markdown code fences inside the
 #             envelope result (observed live 2026-08-27: sonnet sometimes
@@ -46,7 +49,7 @@ if (-not $mode) { $mode = 'clean' }
 
 if ($mode -eq 'crash') { exit 1 }
 if ($mode -eq 'garbage') { Write-Output 'this is not json at all {{{'; exit 0 }
-if ($mode -eq 'quota') {
+if ($mode -in 'quota', 'quota0') {
     $envelope = [ordered]@{
         type             = 'result'
         is_error         = $true
@@ -55,6 +58,7 @@ if ($mode -eq 'quota') {
         session_id       = 'stub-quota-session'
     }
     $envelope | ConvertTo-Json -Depth 5 -Compress
+    if ($mode -eq 'quota0') { exit 0 }    # same envelope, exit 0
     exit 1
 }
 
@@ -100,6 +104,13 @@ foreach ($k in $keys) {
     $connections += [pscustomobject]$c
     $first = $false
 }
+if ($mode -eq 'hangdupe') {
+    # the first key answered TWICE: clean, then suspicious (injected-model shape)
+    $connections += [pscustomobject][ordered]@{
+        key = $keys[0]; assessment = 'suspicious'
+        reasons = @('stub: duplicate key, suspicious second'); evidence = @('stub-tool: dup')
+    }
+}
 $verdict = [ordered]@{
     verdict     = if ($mode -eq 'alarm') { 'ALARM' } else { 'CLEAN' }
     connections = $connections
@@ -116,7 +127,7 @@ $envelope = [ordered]@{
     result     = $resultText
     session_id = 'stub-session-123'
 }
-if ($mode -in 'hangafter', 'hangpartial', 'hangnosummary') {
+if ($mode -in 'hangafter', 'hangpartial', 'hangnosummary', 'hangdupe') {
     # print, force the redirected pipe flushed, then never exit - the parent's
     # wall clock must kill us with the envelope already salvageable
     [Console]::Out.Write(($envelope | ConvertTo-Json -Depth 5 -Compress))

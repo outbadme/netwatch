@@ -39,15 +39,29 @@ JSON text content. Common hard denials inside every tool (enforced in the
 (UNC `\\host\share`, `//host/share`, `\\?\`, `\\.\` device paths, and mapped
 network drives) — refused before any filesystem call, because touching one
 opens an SMB session (network egress + the user's NTLM hash to that host);
-symlinks/junctions on the path are followed one hop at a time from their
-reparse data (local I/O) and denied when a target is non-local or under
-Downloads, before the path itself is ever opened;
+a link-free path is computed first - every symlink/junction on the path,
+including links inside link targets, is resolved one hop from its reparse
+data (local I/O), normalized, and the walk restarts on target + remaining
+components, so no path with an unvetted link reaches the OS; the file is
+then opened for attributes only and the OS's own final name
+(GetFinalPathNameByHandle: long names, links, subst drives resolved) is
+checked again, and the tool works on that name. Also refused: NTFS streams
+(`file:stream`, also in link targets and the final name), path segments
+ending in `.` or space (a backstop: Win32 trims those on open, so a checked
+prefix and the opened path could differ), cloud placeholders
+(offline/recall attributes - reading them downloads content), and any path
+whose attributes cannot be read (only "not found" is reported as such).
+Residual, all needing code already running as this user: a directory
+swapped for a link after it was vetted, and a subst drive whose target is
+itself a link;
 any write/modify/delete operation (none exist in the scripts at all).
 
 ### 1.1 `check_signature`
 - Input: `{ "path": "<absolute file path>" }`
 - Validation: absolute local drive-letter path (no UNC/device/network
-  drive), file exists, not under Downloads.
+  drive), file exists, not under Downloads - checked on the OS-verified
+  final path (see the common denials above); `path` in the output is that
+  final path.
 - Action: `pwsh -File check-signature.ps1 <path>` ->
   `Get-AuthenticodeSignature` (pwsh 7 mandatory — the PS 5.1 silent-fail
   bug is exactly here) + signer chain subjects.
@@ -69,8 +83,10 @@ any write/modify/delete operation (none exist in the scripts at all).
 - Validation + hard guards (defense in depth, duplicated from Tier 1):
   refuses (returns `{ "refused": "<reason>" }`, not an error) — own public
   IP (reads `state/ownip.json`: detected + last-known + recorded static
-  `203.0.113.10`), RFC1918, 100.64.0.0/10, loopback, link-local,
-  multicast/reserved, IPv6 unspecified, Teredo (`2001::/32`), local-use
+  `203.0.113.10`; a missing, unreadable or EMPTY own-IP set refuses every
+  public IP - fail closed), RFC1918, 100.64.0.0/10, loopback, link-local,
+  multicast/reserved, IPv6 unspecified, site-local `fec0::/10`,
+  documentation `2001:db8::/32`, Teredo (`2001::/32`), local-use
   NAT64 (`64:ff9b:1::/48` - IPv4 position depends on the operator's prefix
   length, so it is refused rather than guessed). This guard is
   not model-overridable. The input is canonicalized FIRST (IPv4-mapped IPv6
@@ -83,7 +99,10 @@ any write/modify/delete operation (none exist in the scripts at all).
   quota ledger `state/repquota.json` (VT budget: <= 400/day and 4/min kept
   under the ~500/day free tier; AbuseIPDB analogous). Quota is reserved
   under a named mutex before the lookup and refunded when the lookup fails,
-  so parallel tool calls cannot overrun the per-minute budget. Keys from MCP-server
+  so parallel tool calls cannot overrun the per-minute budget. Writes are
+  atomic (temp + move); an unreadable ledger refuses the lookup instead of
+  re-zeroing the day, and daily housekeeping repairs it as exhausted until
+  midnight. Keys from MCP-server
   env (set by Tier 1 from DPAPI-protected `state/apikeys.dat`), never in
   prompt/log.
 - Output: `{ abuseipdb: {score, reports, last_seen}, virustotal:
