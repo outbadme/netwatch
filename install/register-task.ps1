@@ -3,7 +3,7 @@
 # available privileges for ETW read + packet capture).
 # OPERATOR-RUN ONLY (machine change). Not executed by the implementer.
 
-#Requires -Version 7
+#Requires -Version 7.6
 param(
     [string]$TaskName = 'netwatch-tier1'
 )

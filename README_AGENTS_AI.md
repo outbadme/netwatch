@@ -18,15 +18,17 @@ never in the repo, never in git):
                                 Kill(true) on the whole process tree)
 - src/tier1/send-toast.ps1      BurntToast wrapper (failure never blocks)
 - src/tier1/modules/*.psm1      state, netutil (IP/CIDR math), sampling,
-                                classify, dnsetw, snicapture, enrich,
+                                classify, identity (process-name pins),
+                                dnsetw, snicapture, sysmon (event-3
+                                connection source), enrich,
                                 escalate, toast
 - src/tier2/mcp-server/         stdio MCP server (@modelcontextprotocol/server
                                 v2); tools shell to fixed .ps1 files
 - src/tier2/tools/*.ps1         the ONLY four Tier-2 capabilities, read-only:
                                 check-signature, hash-file, check-reputation,
                                 check-process-lineage
-- src/tier2/system-prompt.md    fixed Tier-2 prompt (loaded into
-                                --system-prompt as a string)
+- src/tier2/system-prompt.md    fixed Tier-2 prompt (passed by path via
+                                --system-prompt-file, never inline)
 - src/tier3/launch-tier3.ps1    fresh interactive claude session in a
                                 visible pwsh window on ALARM (session id is
                                 informational only — D7, amended)

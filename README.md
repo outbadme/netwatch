@@ -28,9 +28,9 @@ Design rationale and edge-case behavior: `ARCHITECTURE.md`, `DECISIONS.md`,
 
 ## Requirements
 
-- Windows 10/11, PowerShell 7: `winget install Microsoft.PowerShell`
-- Node.js 20+: `winget install OpenJS.NodeJS.LTS`
-- Claude Code CLI 2.1.223+ with an active login: `npm install -g @anthropic-ai/claude-code`
+- Windows 10/11, PowerShell 7.6+ (current stable): `winget install Microsoft.PowerShell`
+- Node.js 24+ (LTS): `winget install OpenJS.NodeJS.LTS`
+- Claude Code CLI 2.1.283+ with an active login: `npm install -g @anthropic-ai/claude-code@latest`
 - Wireshark/tshark + Npcap (install below); optional AbuseIPDB / VirusTotal keys
 
 ## Install
@@ -42,6 +42,7 @@ Install-Module BurntToast -Scope CurrentUser -MinimumVersion 1.1.0 -Force # toas
 npm ci --prefix src\tier2\mcp-server                                      # MCP server deps
 pwsh -File install\init-deploy.ps1                                        # machine config + state + whitelist seed
 pwsh -File install\register-task.ps1                                      # logon task
+pwsh -File install\enable-sysmon.ps1 -SysmonExe <path>\Sysmon64.exe      # optional, elevated: see below
 Start-ScheduledTask -TaskName netwatch-tier1
 ```
 
@@ -100,6 +101,20 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 
 ## Honest limitations
 
+- Connections are polled every 30 s. A connection that opens and closes
+  between two polls is invisible to polling; with Sysmon installed
+  (`install/enable-sysmon.ps1`, config `config/sysmon-netwatch.xml` - only
+  NetworkConnect is logged) netwatch also drains Sysmon event 3 each tick
+  and sees those. Without Sysmon every packet says `sysmon: unavailable`.
+- Whitelist entries match on the process NAME. For well-known names Tier 1
+  pins the identity (`src/tier1/modules/identity.psm1`): `svchost`,
+  `explorer`, `taskhostw`, `runtimebroker`, `backgroundtaskhost` must run
+  from their System32/Windows path and `msedge` from its Program Files
+  path, otherwise the connection gets no whitelist and no browser credit.
+  Add or override pins (paths, optional Authenticode signers) in
+  `whitelist.json` under `process_images`. When the image path is
+  unreadable (non-elevated task, SYSTEM processes) matching falls back to
+  the name; a user-level impostor always has a readable path.
 - SNI is captured only on ports 443/8443 (`sni.capture_ports`) and plaintext
   HTTP Host headers only on `sni.http_ports` (default 80 — attributes
   CRL/OCSP-class traffic as source `http-host`; the header is written by the
@@ -114,6 +129,10 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 
 `pwsh -NoProfile -File tests\run-tests.ps1` — self-contained harness, no
 Pester, no admin, no live Claude calls (Tier 2 is stubbed).
+
+CI (`.github/workflows/windows-tests.yml`) runs the same suite on a Windows
+runner in batches, not per push: when a PR is opened / reopened / marked
+ready, when the `run-windows-ci` label is added, or manually from Actions.
 
 ## License
 

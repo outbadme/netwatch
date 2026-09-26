@@ -7,6 +7,22 @@
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
+    "process_images": {
+      "description": "Process identity pins (identity.psm1): lowercase process name -> allowed image paths (%ENV% vars and -like wildcards), or {paths, signers} where signers are Authenticode certificate simple names. A pinned name whose readable image path/signer does not match gets NO whitelist entry and NO browser policy. Replaces the built-in pin for that name.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          {
+            "type": "object", "required": ["paths"], "additionalProperties": false,
+            "properties": {
+              "paths":   { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "signers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        ]
+      }
+    },
     "entries": {
       "type": "array",
       "items": { "$ref": "#/$defs/entry" }
@@ -23,6 +39,7 @@
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
+          "$comment": "An entry matches only with a non-empty destination criterion (domains / domain_suffixes / cidrs), OR as a constraint-only entry pinning BOTH processes and ports/local_ports (P2P-class traffic, e.g. Delivery Optimization 7680) - see classify.psm1 Test-WhitelistMatch. Anything else is inert (never matches). Deliberately NOT enforced here: one inert entry must not fail the whole file (Get-Whitelist would refuse to start without a last-good copy); Get-Whitelist logs a WARN per inert entry instead.",
           "properties": {
             "domains": {
               "description": "exact FQDN matches, lowercase, no trailing dot",

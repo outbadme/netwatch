@@ -45,15 +45,15 @@ TIER2-CONTRACT.md, FAILURE-MATRIX.md.
 | Edge cases F1–F24 | `FAILURE-MATRIX.md` |
 | Schemas (whitelist / packet / verdict / config) | `schemas/*.json` |
 | Seed whitelist (GOAL baseline) + example config | `config/` |
-| pwsh/Node skeletons (collector, cap launcher, toast, tier3, 4 tools, MCP server) | `skeletons/` |
+| Implementation (collector, cap launcher, toast, tier3, 4 tools, MCP server) | `src/` (the design-pass skeletons were removed once superseded) |
 
 ## Open risks (for the implementer)
 
 1. `connect_monitor.ps1` POC was not on disk — Tier-1 collector designed
    from the GOAL text alone; reconcile if the POC surfaces.
 2. Verify at deploy: installed claude CLI supports the exact flags
-   (`--system-prompt` string form used; replace-from-file flag not
-   doc-confirmed); `--permission-mode dontAsk` semantics on the installed
+   (`--system-prompt-file` used since 2026-09-26 - the inline string form
+   overflowed cmd.exe's command-line limit); `--permission-mode dontAsk` semantics on the installed
    version; BurntToast `-Urgent`-equivalent parameter name in 1.1.0.
 3. Inbound-direction detection from Get-NetTCPConnection needs the
    Listen-table heuristic implemented carefully (false "inbound" would

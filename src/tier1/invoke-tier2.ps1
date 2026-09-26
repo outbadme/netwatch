@@ -18,7 +18,7 @@
 #                 the same 429) and must NOT escalate to Tier 3 (capacity, not
 #                 a finding).
 
-#Requires -Version 7
+#Requires -Version 7.6
 param(
     [Parameter(Mandatory)] [string]$PacketPath,
     [Parameter(Mandatory)] [string]$ConfigPath,
@@ -179,15 +179,18 @@ $psi.RedirectStandardInput  = $true
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError  = $true
 $psi.UseShellExecute        = $false
-# System prompt: --system-prompt takes a STRING (replace-from-file flag is not
-# doc-confirmed) -> load the fixed prompt here. ArgumentList = one argv entry
-# per element, no shell quoting involved.
-$sysPrompt = Get-Content -LiteralPath (Join-Path $codeRoot 'src\tier2\system-prompt.md') -Raw
+# System prompt by FILE (--system-prompt-file, verified on CLI 2.1.223 and
+# 2.1.283), never inline: the ~7.5 KB prompt as an argv string pushed the
+# Windows command line to ~8.1K chars, and an npm-installed claude is a .cmd
+# shim that runs through cmd.exe with its 8191-char limit - the child died
+# before reading stdin ("pipe is being closed", first Windows CI run
+# 2026-09-26). ArgumentList = one argv entry per element, no shell quoting.
+$sysPromptFile = Join-Path $codeRoot 'src\tier2\system-prompt.md'
 foreach ($a in @($cfg.tier2.claude_args_prefix) + @(
         '-p', 'Analyze the escalation packet provided on stdin per your system prompt.',
         '--model', $cfg.tier2.model,
         '--output-format', 'json',
-        '--system-prompt', $sysPrompt,
+        '--system-prompt-file', $sysPromptFile,
         '--mcp-config', (Join-Path $codeRoot 'src\tier2\mcp-config.json'),
         '--strict-mcp-config',
         '--permission-mode', 'dontAsk',

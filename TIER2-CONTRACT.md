@@ -35,12 +35,19 @@ Tool names as seen by the model: `mcp__netwatch__<tool>`.
 Every tool: read-only, argument-validated, per-call timeout 20 s, returns
 JSON text content. Common hard denials inside every tool (enforced in the
 .ps1, regardless of what the model asks): any path under
-`C:\Users\YOURNAME\Downloads`; any write/modify/delete operation (none exist
-in the scripts at all).
+`C:\Users\YOURNAME\Downloads`; any path that is not a local drive-letter path
+(UNC `\\host\share`, `//host/share`, `\\?\`, `\\.\` device paths, and mapped
+network drives) — refused before any filesystem call, because touching one
+opens an SMB session (network egress + the user's NTLM hash to that host);
+symlinks/junctions on the path are followed one hop at a time from their
+reparse data (local I/O) and denied when a target is non-local or under
+Downloads, before the path itself is ever opened;
+any write/modify/delete operation (none exist in the scripts at all).
 
 ### 1.1 `check_signature`
 - Input: `{ "path": "<absolute file path>" }`
-- Validation: absolute path, file exists, not under Downloads.
+- Validation: absolute local drive-letter path (no UNC/device/network
+  drive), file exists, not under Downloads.
 - Action: `pwsh -File check-signature.ps1 <path>` ->
   `Get-AuthenticodeSignature` (pwsh 7 mandatory — the PS 5.1 silent-fail
   bug is exactly here) + signer chain subjects.
@@ -63,10 +70,20 @@ in the scripts at all).
   refuses (returns `{ "refused": "<reason>" }`, not an error) — own public
   IP (reads `state/ownip.json`: detected + last-known + recorded static
   `203.0.113.10`), RFC1918, 100.64.0.0/10, loopback, link-local,
-  multicast/reserved. This guard is not model-overridable.
+  multicast/reserved, IPv6 unspecified, Teredo (`2001::/32`), local-use
+  NAT64 (`64:ff9b:1::/48` - IPv4 position depends on the operator's prefix
+  length, so it is refused rather than guessed). This guard is
+  not model-overridable. The input is canonicalized FIRST (IPv4-mapped IPv6
+  -> IPv4, decimal/hex/short IPv4 spellings -> dotted quad, IPv6 scope id
+  dropped) and only the canonical form is compared and put in the lookup
+  URL; the IPv4 embedded in NAT64 `64:ff9b::/96`, IPv4-compatible `::/96`
+  SIIT IPv4-translated `::ffff:0:0:0/96` and 6to4 `2002::/16` addresses is
+  guarded the same way.
 - Action: AbuseIPDB check + VirusTotal ip-address lookup, through the
   quota ledger `state/repquota.json` (VT budget: <= 400/day and 4/min kept
-  under the ~500/day free tier; AbuseIPDB analogous). Keys from MCP-server
+  under the ~500/day free tier; AbuseIPDB analogous). Quota is reserved
+  under a named mutex before the lookup and refunded when the lookup fails,
+  so parallel tool calls cannot overrun the per-minute budget. Keys from MCP-server
   env (set by Tier 1 from DPAPI-protected `state/apikeys.dat`), never in
   prompt/log.
 - Output: `{ abuseipdb: {score, reports, last_seen}, virustotal:
@@ -116,14 +133,14 @@ endpoint), `none`.
   -p "Analyze the escalation packet provided on stdin per your system prompt." `
   --model sonnet `
   --output-format json `
-  --system-prompt "<content of src/tier2/system-prompt.md>"   # replaces default; loaded by launcher
+  --system-prompt-file <code_root>/src/tier2/system-prompt.md   # replaces default; by path, never inline
   --mcp-config src/tier2/mcp-config.json `
   --strict-mcp-config `                             # ignore user/project MCP configs
   --permission-mode dontAsk `
   --allowedTools "mcp__netwatch__check_signature,mcp__netwatch__hash_file,mcp__netwatch__check_reputation,mcp__netwatch__check_process_lineage" `
   --disallowedTools "Bash,Read,Write,Edit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite" `
   --max-turns 25 `
-  < packet.json  > stdout.json 2> stderr.txt        # via Process redirects, see skeleton
+  < packet.json  > stdout.json 2> stderr.txt        # via Process redirects, see src/tier1/invoke-tier2.ps1
 ```
 
 Notes for the implementer (doc-verified behaviors):
@@ -131,14 +148,13 @@ Notes for the implementer (doc-verified behaviors):
   The hard denial is the combination `--permission-mode dontAsk` (denies
   everything not allowed) + explicit `--disallowedTools` for every
   built-in (belt and suspenders; deny rules win over allow).
-- System prompt: `--system-prompt <string>` (replace) and
-  `--append-system-prompt-file <path>` (append) are doc-confirmed; a
-  replace-from-file flag is not — so the launcher loads
-  `system-prompt.md` into the `--system-prompt` string argument
-  (ArgumentList entry, no shell quoting involved).
+- System prompt: `--system-prompt-file <path>` (replace from file; accepted
+  by CLI 2.1.223 and 2.1.283, probed 2026-09-26). The prompt is NOT passed
+  inline: as a string argument it pushed the Windows command line past
+  cmd.exe's 8191-char limit, which an npm-installed `claude.cmd` shim hits.
 - `--output-format json` envelope carries `result` (the verdict JSON text)
   and `session_id` (needed by Tier 3). Exit code + envelope parsing rules
-  in `skeletons/invoke-tier2.ps1`.
+  in `src/tier1/invoke-tier2.ps1`.
 - Working directory: a dedicated runtime dir (state root), NOT the code
   repo — keeps session files and any accidental relative paths inside the
   sandbox area.

@@ -8,7 +8,7 @@ Import-Module "$PSScriptRoot\..\src\tier1\modules\classify.psm1" -Force
 function New-Conn {
     param([hashtable]$O = @{})
     $c = @{
-        pid = 1234; name = 'proc'; image_path = 'x'; image_exists = $true
+        pid = 1234; name = 'proc'; image_path = $null; image_exists = $true
         command_line = ''; laddr = '192.168.1.10'; lport = 50000
         raddr = '1.2.3.4'; rport = 443; state = 'Established'
         direction = 'outbound'; domain = $null; attribution_source = 'none'
@@ -79,6 +79,60 @@ try {
     $c = New-Conn @{ name = 'msrdc'; raddr = '198.51.100.13'; rport = 443 }
     Assert-False (Test-WhitelistMatch -Entry $w365 -Conn $c) 'w365 wrong port no match'
 
+    # --- constraint-only entry (DO peers on 7680): used to NEVER match -------
+    $do = $wl.entries | Where-Object id -eq 'svchost-delivery-optimization-peer'
+    Assert-NotNull $do 'delivery-optimization seed entry present'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680 }
+    Assert-True (Test-WhitelistMatch -Entry $do -Conn $c) 'svchost:7680 to arbitrary peer matches'
+    Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'DO peer classified whitelisted'
+    $c = New-Conn @{ name = 'evil'; raddr = '193.57.46.213'; rport = 7680 }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'other process on 7680 not matched'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7681 }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'svchost on another port not matched'
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680; direction = 'inbound' }
+    Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'outbound-default holds for constraint-only entry'
+    # an entry pinning only a process (or only a port) must never match all traffic
+    $procOnly = [pscustomobject]@{ match = [pscustomobject]@{ processes = @('svchost') } }
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 443 }
+    Assert-False (Test-WhitelistMatch -Entry $procOnly -Conn $c) 'process-only entry matches nothing'
+    $portOnly = [pscustomobject]@{ match = [pscustomobject]@{ ports = @(443) } }
+    Assert-False (Test-WhitelistMatch -Entry $portOnly -Conn $c) 'port-only entry matches nothing'
+
+    # inert entries (no destination, not process+port) must NOT fail the
+    # whole file - an upgrade would otherwise refuse to start on a live
+    # whitelist that was valid before (review finding); they load, never
+    # match, and are reported once per load as WARN
+    $wlSchema = "$PSScriptRoot\..\schemas\whitelist.schema.json"
+    $seedRaw = Get-Content "$PSScriptRoot\..\config\whitelist.seed.json" -Raw
+    Assert-True (Test-Json -Json $seedRaw -SchemaFile $wlSchema -ErrorAction SilentlyContinue) 'seed whitelist still valid'
+    $root2 = New-TestStateRoot
+    try {
+        $cfg2 = Get-NetwatchConfig -Path (New-TestConfig -StateRoot $root2)
+        Initialize-StateRoot -Config $cfg2
+        $mkEntry = {
+            param($id, $match)
+            @{ id = $id; match = $match; added_by = 'human'; added_at = '2026-09-25T00:00:00Z'; evidence = 'test' }
+        }
+        @{ version = 1; entries = @(
+                (& $mkEntry 'inbound-rdp-ports-only' @{ local_ports = @(3389); direction = 'inbound' })
+                (& $mkEntry 'proc-only' @{ processes = @('svchost') })
+                (& $mkEntry 'do-peer' @{ processes = @('svchost'); ports = @(7680) })
+                (& $mkEntry 'dom' @{ domains = @('x.example') })
+            ) } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $cfg2.paths.whitelist
+        $wl2 = Get-Whitelist -Config $cfg2
+        Assert-False ($wl2.PSObject.Properties['load_error']) 'previously-valid inert entries do not fail the load'
+        Assert-Equal 4 @($wl2.entries).Count 'all entries loaded'
+        $log = (Get-ChildItem (Join-Path $root2 'logs') -Filter '*.log' | Get-Content -Raw) -join "`n"
+        Assert-True ($log -match "'inbound-rdp-ports-only' is inert") 'ports-only entry reported inert'
+        Assert-True ($log -match "'proc-only' is inert") 'process-only entry reported inert'
+        Assert-False ($log -match "'do-peer' is inert") 'process+port entry not reported'
+        Assert-False ($log -match "'dom' is inert") 'destination entry not reported'
+        $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.21'; lport = 3389; rport = 55000; direction = 'inbound' }
+        $inert = $wl2.entries | Where-Object id -eq 'inbound-rdp-ports-only'
+        Assert-False (Test-WhitelistMatch -Entry $inert -Conn $c) 'inert entry never matches'
+    }
+    finally { Remove-TestStateRoot $root2 }
+
     # --- Get-Classification --------------------------------------------------
     $c = New-Conn @{ name = 'claude'; domain = 'api.anthropic.com'; attribution_source = 'sni' }
     Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'whitelisted verdict'
@@ -95,6 +149,12 @@ try {
     Assert-Equal 'local-noise' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'loopback noise'
     $c = New-Conn @{ name = 'anything'; raddr = 'fe80::1' }
     Assert-Equal 'local-noise' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'link-local noise'
+    # transition addresses wrapping 127.x / 169.254.x are routable v6 peers,
+    # never local-noise (review finding: would hide real traffic)
+    foreach ($ip in '2002:7f00:1::1', '64:ff9b::a9fe:a9fe', '::7f00:1') {
+        $c = New-Conn @{ name = 'anything'; raddr = $ip }
+        Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) "$ip stays residual"
+    }
     # both-ends-local: remote end is one of THIS host's own addresses
     $hostAddrs = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $null = $hostAddrs.Add('192.168.1.10')

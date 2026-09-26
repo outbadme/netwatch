@@ -7,6 +7,7 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'netutil.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'identity.psm1')
 
 function Test-WhitelistMatch {
     # One whitelist entry vs one connection. Destination criteria (domains OR
@@ -33,8 +34,24 @@ function Test-WhitelistMatch {
         if ($Conn.lport -notin @($m.local_ports)) { return $false }
     }
 
+    # constraint-only entry (no destination criterion at all): P2P-class
+    # traffic whose peers are arbitrary by design (Delivery Optimization on
+    # 7680). Matches on its constraints alone, but ONLY when it pins both a
+    # process and a port - the schema rejects anything broader. Previously
+    # such an entry silently never matched (review finding).
+    $hasDest = $false
+    foreach ($f in 'domains', 'domain_suffixes', 'cidrs') {
+        if ($m.PSObject.Properties[$f] -and @($m.$f).Count -gt 0) { $hasDest = $true }
+    }
+    if (-not $hasDest) {
+        $hasProc = $m.PSObject.Properties['processes'] -and @($m.processes).Count -gt 0
+        $hasPort = ($m.PSObject.Properties['ports'] -and @($m.ports).Count -gt 0) -or
+                   ($m.PSObject.Properties['local_ports'] -and @($m.local_ports).Count -gt 0)
+        return [bool]($hasProc -and $hasPort)   # constraints above already passed
+    }
+
     # destination criteria: any present criterion may match
-    $domain = if ($Conn.domain) { $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
+    $domain =if ($Conn.domain) { $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
     if ($domain -and $m.PSObject.Properties['domains']) {
         if ($domain -in @($m.domains)) { return $true }
     }
@@ -67,6 +84,12 @@ function Get-Classification {
     $reason = Test-NonRoutableIp -Ip $Conn.raddr
     if ($reason -in 'loopback', 'link-local') { return 'local-noise' }
     if ($HostAddresses -and $HostAddresses.Contains($Conn.raddr)) { return 'local-noise' }
+
+    # process identity (identity.psm1): a pinned name whose readable image
+    # path / signer does not match is an impostor - it gets NO whitelist and
+    # NO browser credit; recorded on the conn so the packet shows Tier 2 why
+    $Conn.identity = Test-ProcessIdentity -Conn $Conn -Whitelist $Whitelist
+    if ($Conn.identity -eq 'mismatch') { return 'residual' }
 
     foreach ($entry in $Whitelist.entries) {
         if (Test-WhitelistMatch -Entry $entry -Conn $Conn) { return 'whitelisted' }

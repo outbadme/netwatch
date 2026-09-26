@@ -65,6 +65,20 @@ try {
     Assert-NotNull (Test-ExcludedFromLookup -Ip '10.1.1.1' -Exclusions $ex) 'rfc1918 excluded'
     Assert-NotNull (Test-ExcludedFromLookup -Ip '100.64.0.10' -Exclusions $ex) 'tailscale cgnat excluded'
     Assert-Null (Test-ExcludedFromLookup -Ip '8.8.8.8' -Exclusions $ex) 'public ip allowed'
+    # alternate spellings of the own IP must not slip past (review finding)
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '::ffff:203.0.113.10' -Exclusions $ex) 'v4-mapped own static excluded'
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '3405803786' -Exclusions $ex) 'decimal own static excluded'
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '::ffff:5.6.7.8' -Exclusions $ex) 'v4-mapped detected own ip excluded'
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '64:ff9b::506:708' -Exclusions $ex) 'NAT64-embedded own ip excluded'
+    Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '::ffff:10.1.1.1' -Exclusions $ex) 'v4-mapped private excluded'
+    Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '64:ff9b::a00:1' -Exclusions $ex) 'NAT64-embedded private excluded'
+    Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '2002:c0a8:101::1' -Exclusions $ex) '6to4-embedded private excluded'
+    Assert-Equal 'loopback' (Test-ExcludedFromLookup -Ip '2002:7f00:1::1' -Exclusions $ex) '6to4-embedded loopback excluded'
+    Assert-Null (Test-ExcludedFromLookup -Ip '64:ff9b::808:808' -Exclusions $ex) 'NAT64-embedded public allowed'
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '::ffff:0:cb00:710a' -Exclusions $ex) 'SIIT-embedded own static excluded'
+    Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '::ffff:0:a00:1' -Exclusions $ex) 'SIIT-embedded private excluded'
+    Assert-Equal 'tunnel' (Test-ExcludedFromLookup -Ip '64:ff9b:1::cb00:710a' -Exclusions $ex) 'local-use NAT64 excluded'
+    Assert-Equal 'invalid' (Test-ExcludedFromLookup -Ip 'garbage' -Exclusions $ex) 'garbage never looked up'
 
     # --- Cymru parse with canned resolver ------------------------------------
     $canned = {

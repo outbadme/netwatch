@@ -5,7 +5,7 @@
 # moving the repo.
 # Params exist for tests only - production runs take the defaults.
 
-#Requires -Version 7
+#Requires -Version 7.6
 param(
     [string]$StateRoot = [Environment]::ExpandEnvironmentVariables('%LOCALAPPDATA%\netwatch'),
     [string]$ConfigOut,

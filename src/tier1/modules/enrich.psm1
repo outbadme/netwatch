@@ -116,8 +116,18 @@ function Test-ExcludedFromLookup {
         [Parameter(Mandatory)] [string]$Ip,
         [Parameter(Mandatory)] [string[]]$Exclusions
     )
-    if ($Ip -in $Exclusions) { return 'own public ip' }
-    return Test-NonRoutableIp -Ip $Ip
+    # compare canonical forms: '::ffff:<own>' or a decimal spelling of the own
+    # IP must not slip past a raw string match; transition addresses
+    # (NAT64/6to4/IPv4-compatible) are judged by their embedded IPv4 too
+    $canon = ConvertTo-CanonicalIp -Ip $Ip
+    if (-not $canon) { return 'invalid' }
+    $own = @($Exclusions | ForEach-Object { ConvertTo-CanonicalIp -Ip $_ } | Where-Object { $_ })
+    if ($canon -in $own) { return 'own public ip' }
+    $embedded = Get-EmbeddedIPv4 -Ip $canon
+    if ($embedded -and $embedded -in $own) { return 'own public ip' }
+    $reason = Test-NonRoutableIp -Ip $canon
+    if (-not $reason -and $embedded) { $reason = Test-NonRoutableIp -Ip $embedded }
+    return $reason
 }
 
 function Get-CymruAsn {

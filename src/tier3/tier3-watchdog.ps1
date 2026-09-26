@@ -16,7 +16,7 @@
 #
 # Test seam: env NETWATCH_TEST_IDLE_MS overrides the measured idle.
 
-#Requires -Version 7
+#Requires -Version 7.6
 param(
     [Parameter(Mandatory)] [int]$TargetPid,
     [string]$Keys = '',

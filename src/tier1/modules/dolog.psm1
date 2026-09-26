@@ -10,6 +10,8 @@
 # Consulted LAST in the attribution chain, only when every other source
 # returned 'none'. All evidence-source failures fail OPEN to $null.
 
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')
+
 $script:DoLogCache   = $null
 $script:DoLogCacheAt = [datetime]::MinValue
 $script:DoLogWarned  = $false
@@ -88,9 +90,17 @@ function Resolve-DoLogAttribution {
     if ([int]$Conn.rport -ne 80) { return $null }
     $map = Get-DoCacheHostMap -Provider $Provider
     if (-not $map) { return $null }
-    $ip = [string]$Conn.raddr
+    $ip = ConvertTo-CanonicalIp -Ip ([string]$Conn.raddr)
+    if (-not $ip) { $ip = [string]$Conn.raddr }
     if ($map.ContainsKey($ip)) {
         return @{ source = 'do-log'; domain = $map[$ip] }
+    }
+    # DO may report the cache host in another spelling (e.g. ::ffff:a.b.c.d);
+    # the map is small (<= 500 records), compare canonical forms
+    foreach ($k in @($map.Keys)) {
+        if ((ConvertTo-CanonicalIp -Ip ([string]$k)) -eq $ip) {
+            return @{ source = 'do-log'; domain = $map[$k] }
+        }
     }
     return $null
 }

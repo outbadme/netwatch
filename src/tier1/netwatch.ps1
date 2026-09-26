@@ -4,7 +4,7 @@
 # Test hooks: -NoMutex, -MaxTicks, -TickDelaySec (prod default = config
 # sample_interval_sec), -ConfigPath.
 
-#Requires -Version 7
+#Requires -Version 7.6
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\netwatch.config.json'),
     [switch]$Once,
@@ -15,7 +15,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-foreach ($m in 'state', 'netutil', 'sampling', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast', 'dolog') {
+foreach ($m in 'state', 'netutil', 'sampling', 'classify', 'dnsetw', 'snicapture', 'enrich', 'escalate', 'toast', 'dolog', 'sysmon') {
     Import-Module (Join-Path $PSScriptRoot "modules\$m.psm1") -Force
 }
 
@@ -44,6 +44,7 @@ try {
     $health = @{
         sni_capture = $sniState.health
         dns_etw     = (Test-DnsEtwAvailable)
+        sysmon      = (Test-SysmonAvailable)     # optional: fills the 30-s poll gap
     }
     if ($health.dns_etw -ne 'ok') {
         $null = Send-NetwatchToast -Config $cfg -Title 'netwatch: DNS attribution off' `
@@ -64,7 +65,7 @@ try {
     $delaySec = if ($TickDelaySec -ge 0) { $TickDelaySec } else { $cfg.sample_interval_sec }
     if ($Once) { $MaxTicks = 1 }
 
-    Write-OpLog -Config $cfg -Level INFO -Message "netwatch started (pid $PID, sni=$($health.sni_capture), dns_etw=$($health.dns_etw))"
+    Write-OpLog -Config $cfg -Level INFO -Message "netwatch started (pid $PID, sni=$($health.sni_capture), dns_etw=$($health.dns_etw), sysmon=$($health.sysmon))"
 
     # --- main loop -----------------------------------------------------------
     while ($true) {
@@ -111,6 +112,13 @@ try {
             $sample = @(Get-ConnectionSample -PidCache $pidCache -ListenPorts $listen)
             # PID-reuse guard: drop cache entries for PIDs with no live conns
             Sync-PidCache -PidCache $pidCache -ActivePids @($sample | ForEach-Object pid)
+            # Sysmon event 3: connections that opened AND closed between two
+            # polls exist only here (after Sync-PidCache - event conns carry
+            # their own image path and must not keep dead PIDs cached)
+            $health.sysmon = Test-SysmonAvailable
+            if ($health.sysmon -eq 'ok') {
+                $sample = @(Merge-SysmonConnections -Sample $sample -Events @(Read-SysmonConnections -Config $cfg))
+            }
             $hostAddrs = Get-HostAddresses
 
             # F5: health re-probed every tick (runtime failures AND operator

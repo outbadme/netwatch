@@ -3,7 +3,7 @@
 # Safe to run as normal user; changes nothing.
 # Jail rule: no literal outside-repo paths here — PATH lookup / env refs only.
 
-#Requires -Version 7
+#Requires -Version 7.6
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
@@ -44,5 +44,21 @@ catch {
 $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $pr = [System.Security.Principal.WindowsPrincipal]::new($id)
 $result.is_admin = $pr.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+# documented minimums (README "Requirements", raised to current releases
+# 2026-09-26: pwsh 7.6, Node 24 LTS, Claude CLI 2.1.283): anything below is reported,
+# not fixed - installing/upgrading stays an operator action
+function ConvertTo-Ver([string]$s) {
+    if ($s -match '(\d+\.\d+(\.\d+)?)') { return [version]$Matches[1] } else { return $null }
+}
+$min = [ordered]@{ pwsh = '7.6'; node = '24.0'; claude = '2.1.283'; burnttoast = '1.1.0' }
+$have = @{
+    pwsh = ConvertTo-Ver $result.pwsh_version; node = ConvertTo-Ver $result.node_version
+    claude = ConvertTo-Ver $result.claude_version; burnttoast = ConvertTo-Ver $result.burnttoast_version
+}
+$result.below_minimum = @(foreach ($k in $min.Keys) {
+        if ($null -eq $have[$k]) { "${k}: missing (min $($min[$k]))" }
+        elseif ($have[$k] -lt [version]$min[$k]) { "${k}: $($have[$k]) < $($min[$k])" }
+    })
 
 [pscustomobject]$result | ConvertTo-Json

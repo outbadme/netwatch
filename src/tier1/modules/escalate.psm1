@@ -58,6 +58,7 @@ function Build-EscalationPacket {
             $proc.image_exists = [bool]$c.image_exists
         }
         if ($c.command_line) { $proc.command_line = $c.command_line }
+        if ($c.ContainsKey('identity') -and $c.identity) { $proc.identity = $c.identity }
         $remote = [ordered]@{ ip = $c.raddr; port = $c.rport }
         if ($q.enriched) {
             if ($null -ne $q.enriched.asn)        { $remote.asn = $q.enriched.asn }
@@ -86,6 +87,9 @@ function Build-EscalationPacket {
         sni_capture = $Health.sni_capture
         dns_etw     = $Health.dns_etw
     }
+    # optional source: tells Tier 2 whether short-lived connections (opened
+    # and closed between two polls) can appear in the packet at all
+    if ($Health.ContainsKey('sysmon') -and $Health.sysmon) { $ch.sysmon = $Health.sysmon }
     # egress-change note (2026-08-28): a fresh channel switch (VPN/proxy
     # up/down) explains sudden address rotation - tier2 must see it as
     # context, not treat the rotation as evidence

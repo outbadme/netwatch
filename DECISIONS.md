@@ -90,7 +90,7 @@ the same benign residual — noise and quota burn).
   limits. Stdin piping is the documented headless-mode input path
   (10 MB cap — orders of magnitude above packet size).
 
-Concrete code: `skeletons/invoke-tier2.ps1`.
+Concrete code: `src/tier1/invoke-tier2.ps1`.
 
 ## D4 — Toast mechanism: BurntToast module (pinned >= 1.1.0)
 

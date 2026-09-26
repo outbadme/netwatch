@@ -81,6 +81,17 @@ function Get-Whitelist {
         }
         $wl = $raw | ConvertFrom-Json
         $script:LastGoodWhitelist = $wl
+        # inert entries (no destination and not process+port) never match;
+        # say so once per load instead of failing the file (schema $comment)
+        foreach ($e in @($wl.entries)) {
+            $m = $e.match
+            $has = { param($f) [bool]($m.PSObject.Properties[$f] -and @($m.$f).Count -gt 0) }
+            $dest = (& $has 'domains') -or (& $has 'domain_suffixes') -or (& $has 'cidrs')
+            $pinned = (& $has 'processes') -and ((& $has 'ports') -or (& $has 'local_ports'))
+            if (-not $dest -and -not $pinned) {
+                Write-OpLog -Config $Config -Level WARN -Message "whitelist entry '$($e.id)' is inert (no domains/domain_suffixes/cidrs and not processes+ports) - it never matches"
+            }
+        }
         return $wl
     }
     catch {
@@ -238,9 +249,21 @@ function Invoke-Housekeeping {
             Write-OpLog -Config $Config -Level ERROR -Message "housekeeping failed for $($p.dir): $($_.Exception.Message)"
         }
     }
-    # quota ledger: reset counters when the date rolled over
+    # quota ledger: reset counters when the date rolled over. Taken under the
+    # SAME named mutex check-reputation.ps1 uses (name = hash of the ledger
+    # path) - an unlocked read-then-overwrite here could wipe a reservation a
+    # concurrent Tier-2 call just wrote (review finding). Busy -> skip: the
+    # tool resets a stale date itself on its next read, nothing is lost.
+    $ledgerFile = Join-Path $root 'state\repquota.json'
+    $mutex = [System.Threading.Mutex]::new($false, (Get-LedgerMutexName -LedgerFile $ledgerFile))
+    $held = $false
     try {
-        $ledgerFile = Join-Path $root 'state\repquota.json'
+        try { $held = $mutex.WaitOne(2000) }
+        catch [System.Threading.AbandonedMutexException] { $held = $true }
+        if (-not $held) {
+            Write-OpLog -Config $Config -Level WARN -Message 'quota ledger busy - daily reset skipped (tool resets on its next read)'
+            return
+        }
         $today = Get-Date -Format 'yyyy-MM-dd'
         $reset = $true
         if (Test-Path -LiteralPath $ledgerFile) {
@@ -256,8 +279,22 @@ function Invoke-Housekeeping {
     catch {
         Write-OpLog -Config $Config -Level ERROR -Message "quota ledger reset failed: $($_.Exception.Message)"
     }
+    finally {
+        if ($held) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
+
+function Get-LedgerMutexName {
+    # MUST stay identical to the derivation in src/tier2/tools/check-reputation.ps1
+    # (duplicated there on purpose: that file stays import-free; drift is
+    # caught by tests/duplication-sync.tests.ps1).
+    param([Parameter(Mandatory)] [string]$LedgerFile)
+    return 'netwatch-repquota-' + [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [Text.Encoding]::UTF8.GetBytes($LedgerFile.ToLowerInvariant()))).Substring(0, 16)
 }
 
 Export-ModuleMember -Function Get-NetwatchConfig, Initialize-StateRoot, Get-Whitelist,
     Write-OpLog, Write-ConnLog, Add-Suppression, Test-Suppressed, Add-Proposal,
-    Invoke-Housekeeping, Expand-NetwatchPath
+    Invoke-Housekeeping, Expand-NetwatchPath, Get-LedgerMutexName
