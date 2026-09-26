@@ -18,7 +18,8 @@ never in the repo, never in git):
                                 Kill(true) on the whole process tree)
 - src/tier1/send-toast.ps1      BurntToast wrapper (failure never blocks)
 - src/tier1/modules/*.psm1      state, netutil (IP/CIDR math), sampling,
-                                classify, dnsetw, snicapture, enrich,
+                                classify, identity (process-name pins),
+                                dnsetw, snicapture, enrich,
                                 escalate, toast
 - src/tier2/mcp-server/         stdio MCP server (@modelcontextprotocol/server
                                 v2); tools shell to fixed .ps1 files

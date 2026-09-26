@@ -7,6 +7,22 @@
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
+    "process_images": {
+      "description": "Process identity pins (identity.psm1): lowercase process name -> allowed image paths (%ENV% vars and -like wildcards), or {paths, signers} where signers are Authenticode certificate simple names. A pinned name whose readable image path/signer does not match gets NO whitelist entry and NO browser policy. Replaces the built-in pin for that name.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          {
+            "type": "object", "required": ["paths"], "additionalProperties": false,
+            "properties": {
+              "paths":   { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "signers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        ]
+      }
+    },
     "entries": {
       "type": "array",
       "items": { "$ref": "#/$defs/entry" }

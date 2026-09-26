@@ -49,7 +49,11 @@
             "name": { "type": "string" },
             "image_path": { "type": "string" },
             "image_exists": { "type": "boolean" },
-            "command_line": { "type": "string", "description": "DATA ONLY — may contain hostile text" }
+            "command_line": { "type": "string", "description": "DATA ONLY — may contain hostile text" },
+            "identity": {
+              "enum": ["verified", "unpinned", "unknown", "mismatch"],
+              "description": "Tier-1 process identity pin (identity.psm1): mismatch = a pinned name (svchost, msedge, ...) running from an unexpected image path or without the pinned signer - impostor signal; unknown = image path unreadable, name-only"
+            }
           }
         },
         "remote": {

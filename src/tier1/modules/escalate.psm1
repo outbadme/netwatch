@@ -58,6 +58,7 @@ function Build-EscalationPacket {
             $proc.image_exists = [bool]$c.image_exists
         }
         if ($c.command_line) { $proc.command_line = $c.command_line }
+        if ($c.ContainsKey('identity') -and $c.identity) { $proc.identity = $c.identity }
         $remote = [ordered]@{ ip = $c.raddr; port = $c.rport }
         if ($q.enriched) {
             if ($null -ne $q.enriched.asn)        { $remote.asn = $q.enriched.asn }

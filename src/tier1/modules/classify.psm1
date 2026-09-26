@@ -7,6 +7,7 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'netutil.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'identity.psm1')
 
 function Test-WhitelistMatch {
     # One whitelist entry vs one connection. Destination criteria (domains OR
@@ -83,6 +84,12 @@ function Get-Classification {
     $reason = Test-NonRoutableIp -Ip $Conn.raddr
     if ($reason -in 'loopback', 'link-local') { return 'local-noise' }
     if ($HostAddresses -and $HostAddresses.Contains($Conn.raddr)) { return 'local-noise' }
+
+    # process identity (identity.psm1): a pinned name whose readable image
+    # path / signer does not match is an impostor - it gets NO whitelist and
+    # NO browser credit; recorded on the conn so the packet shows Tier 2 why
+    $Conn.identity = Test-ProcessIdentity -Conn $Conn -Whitelist $Whitelist
+    if ($Conn.identity -eq 'mismatch') { return 'residual' }
 
     foreach ($entry in $Whitelist.entries) {
         if (Test-WhitelistMatch -Entry $entry -Conn $Conn) { return 'whitelisted' }

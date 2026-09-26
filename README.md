@@ -100,6 +100,15 @@ good ones into `whitelist.json` by hand — suppression alone expires every
 
 ## Honest limitations
 
+- Whitelist entries match on the process NAME. For well-known names Tier 1
+  pins the identity (`src/tier1/modules/identity.psm1`): `svchost`,
+  `explorer`, `taskhostw`, `runtimebroker`, `backgroundtaskhost` must run
+  from their System32/Windows path and `msedge` from its Program Files
+  path, otherwise the connection gets no whitelist and no browser credit.
+  Add or override pins (paths, optional Authenticode signers) in
+  `whitelist.json` under `process_images`. When the image path is
+  unreadable (non-elevated task, SYSTEM processes) matching falls back to
+  the name; a user-level impostor always has a readable path.
 - SNI is captured only on ports 443/8443 (`sni.capture_ports`) and plaintext
   HTTP Host headers only on `sni.http_ports` (default 80 — attributes
   CRL/OCSP-class traffic as source `http-host`; the header is written by the

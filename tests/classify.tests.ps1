@@ -8,7 +8,7 @@ Import-Module "$PSScriptRoot\..\src\tier1\modules\classify.psm1" -Force
 function New-Conn {
     param([hashtable]$O = @{})
     $c = @{
-        pid = 1234; name = 'proc'; image_path = 'x'; image_exists = $true
+        pid = 1234; name = 'proc'; image_path = $null; image_exists = $true
         command_line = ''; laddr = '192.168.1.10'; lport = 50000
         raddr = '1.2.3.4'; rport = 443; state = 'Established'
         direction = 'outbound'; domain = $null; attribution_source = 'none'
