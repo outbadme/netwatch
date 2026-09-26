@@ -9,27 +9,49 @@
 #   'verified' - pinned and the image path (+ signer) matches
 #   'unknown'  - pinned, but the image path is unreadable (non-elevated WMI
 #                returns no ExecutablePath for SYSTEM/PPL processes): falls
-#                back to name-only - failing closed here would turn every
-#                system service into residual noise. A user-level impostor
-#                ALWAYS has a readable path, so it cannot hide in this case.
+#                back to name-only for entries WITH a destination - failing
+#                closed there would turn every system service into residual
+#                noise. It gets no browser credit and no constraint-only
+#                (any-peer) entry: those would trust the bare name for
+#                arbitrary destinations (classify.psm1).
 #   'mismatch' - pinned, path readable, path or signer wrong: the connection
 #                matches NO whitelist entry and NO browser policy (residual)
 #
-# Pins = built-in defaults (OS binaries with a single fixed location, Edge)
-# overlaid by the whitelist's optional top-level "process_images" (a name
-# given there REPLACES the built-in pin for that name). Paths may use
-# %ENV% variables and -like wildcards; comparison is case-insensitive.
+# Pins = built-in defaults (OS binaries with fixed locations; Edge and
+# WebView2 by install layout + Microsoft signature, since channels and
+# fixed-version WebView2 runtimes live in many places) overlaid by the
+# whitelist's optional top-level "process_images" (a name given there
+# REPLACES the built-in pin for that name, except an empty one). Paths may use %ENV% variables and
+# -like wildcards; comparison is case-insensitive. Characters in an EXPANDED
+# variable are literal (a profile named 'a[1]' is not a wildcard set).
+# An empty paths list = no legitimate image exists (the name alone is a lie).
 
 Set-StrictMode -Version Latest
 
 $script:BuiltinPins = @{
-    'svchost'            = @{ paths = @('%SystemRoot%\System32\svchost.exe') }
+    'svchost'            = @{ paths = @('%SystemRoot%\System32\svchost.exe'
+                                        '%SystemRoot%\SysWOW64\svchost.exe'
+                                        '%SystemRoot%\SysArm32\svchost.exe') }
+    # DoSvc is a service INSIDE svchost; no dosvc.exe ships with Windows
+    'dosvc'              = @{ paths = @() }
     'explorer'           = @{ paths = @('%SystemRoot%\explorer.exe') }
     'taskhostw'          = @{ paths = @('%SystemRoot%\System32\taskhostw.exe') }
     'runtimebroker'      = @{ paths = @('%SystemRoot%\System32\RuntimeBroker.exe') }
     'backgroundtaskhost' = @{ paths = @('%SystemRoot%\System32\backgroundTaskHost.exe') }
-    'msedge'             = @{ paths = @('%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe'
-                                        '%ProgramFiles%\Microsoft\Edge\Application\msedge.exe') }
+    # stable/Beta/Dev under Program Files, Canary ('Edge SxS') per user. The
+    # roots matter: a signed msedge.exe copied next to a planted DLL anywhere
+    # else is a classic side-load and must not get browser credit
+    'msedge'             = @{ paths   = @('%ProgramFiles(x86)%\Microsoft\Edge*\Application\msedge.exe'
+                                          '%ProgramFiles%\Microsoft\Edge*\Application\msedge.exe'
+                                          '%LOCALAPPDATA%\Microsoft\Edge SxS\Application\msedge.exe')
+                              signers = @('Microsoft Corporation') }
+    # Evergreen runtime (EdgeWebView\Application\<ver>\, machine or per
+    # user). A fixed-version runtime shipped inside an app needs its own
+    # process_images entry.
+    'msedgewebview2'     = @{ paths   = @('%ProgramFiles(x86)%\Microsoft\Edge*\Application\*\msedgewebview2.exe'
+                                          '%ProgramFiles%\Microsoft\Edge*\Application\*\msedgewebview2.exe'
+                                          '%LOCALAPPDATA%\Microsoft\EdgeWebView\Application\*\msedgewebview2.exe')
+                              signers = @('Microsoft Corporation') }
 }
 
 $script:PinCache = @{ source = $null; pins = $null }
@@ -61,6 +83,9 @@ function Get-ProcessPins {
     foreach ($k in $script:BuiltinPins.Keys) { $pins[$k] = $script:BuiltinPins[$k] }
     if ($null -ne $Whitelist -and $Whitelist.PSObject.Properties['process_images']) {
         foreach ($p in $Whitelist.process_images.PSObject.Properties) {
+            # a built-in "no legitimate image" pin (dosvc) is not overridable
+            $bi = $script:BuiltinPins[$p.Name.ToLowerInvariant()]
+            if ($bi -and @($bi.paths).Count -eq 0) { continue }
             $v = $p.Value
             $pin = if ($v -is [string] -or $v -is [array]) { @{ paths = @($v) } }
                    else {
@@ -89,6 +114,18 @@ function Get-ImageSigner {
     return $cn
 }
 
+function Expand-PinPattern {
+    # %VAR% -> its value with wildcard characters escaped; the pattern's own
+    # * ? [ ] stay wildcards. Undefined variables stay literal (no match).
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Pattern)
+    return [regex]::Replace($Pattern, '%([^%]+)%', {
+            param($m)
+            $v = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
+            if ($null -eq $v) { return $m.Value }
+            return [Management.Automation.WildcardPattern]::Escape($v)
+        })
+}
+
 function Test-ProcessIdentity {
     param(
         [Parameter(Mandatory)] $Conn,
@@ -98,13 +135,13 @@ function Test-ProcessIdentity {
     $name = ([string]$Conn.name).ToLowerInvariant()
     if (-not $pins.ContainsKey($name)) { return 'unpinned' }
     $pin = $pins[$name]
+    if (@($pin.paths).Count -eq 0) { return 'mismatch' }       # no legitimate image exists
     $img = [string]$Conn.image_path
     if (-not $img) { return 'unknown' }
 
     $pathOk = $false
     foreach ($pattern in @($pin.paths)) {
-        $expanded = [Environment]::ExpandEnvironmentVariables([string]$pattern)
-        if ($img -like $expanded) { $pathOk = $true; break }
+        if ($img -like (Expand-PinPattern -Pattern ([string]$pattern))) { $pathOk = $true; break }
     }
     if (-not $pathOk) { return 'mismatch' }
 
@@ -119,4 +156,12 @@ function Test-ProcessIdentity {
     return 'verified'
 }
 
-Export-ModuleMember -Function Test-ProcessIdentity, Get-ProcessPins, Set-SignerProvider
+function Get-UnpinnedNames {
+    # Names from $Names with no identity pin: the operator is told once at
+    # load (a browser entry grants credit for ANY domain to that bare name).
+    param([string[]]$Names, $Whitelist)
+    $pins = Get-ProcessPins -Whitelist $Whitelist
+    return @(@($Names) | Where-Object { $_ -and -not $pins.ContainsKey($_.ToLowerInvariant()) })
+}
+
+Export-ModuleMember -Function Get-UnpinnedNames, Test-ProcessIdentity, Get-ProcessPins, Set-SignerProvider, Expand-PinPattern

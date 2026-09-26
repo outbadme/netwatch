@@ -92,6 +92,13 @@ try {
     Assert-True (Test-Suppressed -Config $cfg -Key 'kGood') 'good entry survives a corrupt sibling'
     Assert-False (Test-Suppressed -Config $cfg -Key 'kBad') 'corrupt entry itself dropped'
 
+    # keys persisted before addresses were canonicalized still match
+    ('{"svchost|::FFFF:203.0.113.5|443":{"expires_utc":"2099-01-01T00:00:00Z","added_utc":"2020-01-01T00:00:00Z"}}') |
+        Set-Content -LiteralPath $supFile
+    Assert-True (Test-Suppressed -Config $cfg -Key 'svchost|203.0.113.5|443') 'legacy mapped-v6 suppression key matches canonical key'
+    Add-Suppression -Config $cfg -Key 'x|2001:DB8:0::1|443' -TtlHours 1
+    Assert-True (Test-Suppressed -Config $cfg -Key 'x|2001:db8::1|443') 'suppression stored canonical'
+
     # --- proposals -----------------------------------------------------------
     $prop = @{ id = 'test-prop'; match = @{ domains = @('example.com') }
                added_by = 'tier3'; added_at = '2026-08-27T00:00:00Z'; evidence = 'test' }
@@ -101,6 +108,10 @@ try {
     Assert-Equal 2 $lines.Count 'two proposal lines'
     Assert-False ([bool]$lines[0].double_clean) 'first proposal not double_clean'
     Assert-True  ([bool]$lines[1].double_clean) 'second same-key proposal marked double_clean (D1)'
+    Add-Proposal -Config $cfg -Key 'p|::ffff:203.0.113.6|443' -Proposal $prop -PacketId 'p3'
+    Add-Proposal -Config $cfg -Key 'p|203.0.113.6|443' -Proposal $prop -PacketId 'p4'
+    $lines = @(Get-Content (Join-Path $root 'state\proposals.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+    Assert-True ([bool]$lines[3].double_clean) 'double_clean across address spellings'
 
     # --- housekeeping / retention (D5) --------------------------------------
     $oldConn = Join-Path $root 'logs\conn-20250101.jsonl'

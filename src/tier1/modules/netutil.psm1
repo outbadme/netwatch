@@ -59,6 +59,23 @@ function ConvertTo-CanonicalIp {
     return $addr.ToString()
 }
 
+function ConvertTo-CanonicalKey {
+    # Residual key 'proc|domain-or-ip|port' with an IPv6 middle segment in
+    # canonical form. Keys persisted before sampling canonicalized addresses
+    # (suppression, alarm markers, proposals) hold '::ffff:a.b.c.d' or other
+    # spellings and would never equal the key built today. Only a segment
+    # with ':' is touched - a domain never contains one.
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Key)
+    $parts = $Key.Split('|')
+    if ($parts.Count -lt 3) { return $Key }
+    $mid = $parts[$parts.Count - 2]
+    if (-not $mid.Contains(':')) { return $Key }
+    $canon = ConvertTo-CanonicalIp -Ip $mid
+    if (-not $canon) { return $Key }
+    $parts[$parts.Count - 2] = $canon
+    return $parts -join '|'
+}
+
 function Get-EmbeddedIPv4 {
     # IPv4 address carried inside an IPv6 transition address, else $null:
     # NAT64 well-known prefix 64:ff9b::/96, deprecated IPv4-compatible ::/96,
@@ -143,4 +160,4 @@ function ConvertTo-CymruName {
 }
 
 Export-ModuleMember -Function Test-IpInCidr, Test-NonRoutableIp, ConvertTo-CymruName,
-    ConvertTo-CanonicalIp, Get-EmbeddedIPv4
+    ConvertTo-CanonicalIp, ConvertTo-CanonicalKey, Get-EmbeddedIPv4

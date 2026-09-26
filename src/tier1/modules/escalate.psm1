@@ -7,6 +7,7 @@ Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'state.psm1')
 Import-Module (Join-Path $PSScriptRoot 'toast.psm1')
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')
 
 function New-EscalationState {
     return @{
@@ -360,11 +361,11 @@ function Test-OpenAlarmKeys {
     foreach ($marker in @(Get-ChildItem -Path $alarmDir -Filter '*-open.marker' -File -ErrorAction SilentlyContinue)) {
         try {
             $m = Get-Content -LiteralPath $marker.FullName -Raw | ConvertFrom-Json
-            foreach ($k in @($m.keys)) { $null = $suspended.Add($k) }
+            foreach ($k in @($m.keys)) { $null = $suspended.Add((ConvertTo-CanonicalKey -Key ([string]$k))) }
         }
         catch {}
     }
-    return @($Keys | Where-Object { $suspended.Contains($_) })
+    return @($Keys | Where-Object { $suspended.Contains((ConvertTo-CanonicalKey -Key $_)) })
 }
 
 Export-ModuleMember -Function New-EscalationState, Build-EscalationPacket,

@@ -4,6 +4,7 @@
 . "$PSScriptRoot\_testconfig.ps1"
 Import-Module "$PSScriptRoot\..\src\tier1\modules\state.psm1" -Force
 Import-Module "$PSScriptRoot\..\src\tier1\modules\classify.psm1" -Force
+Import-Module "$PSScriptRoot\..\src\tier1\modules\identity.psm1"   # same instance classify uses (signer seam)
 
 function New-Conn {
     param([hashtable]$O = @{})
@@ -82,9 +83,19 @@ try {
     # --- constraint-only entry (DO peers on 7680): used to NEVER match -------
     $do = $wl.entries | Where-Object id -eq 'svchost-delivery-optimization-peer'
     Assert-NotNull $do 'delivery-optimization seed entry present'
-    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680 }
+    if (-not $env:SystemRoot) { $env:SystemRoot = 'C:\Windows' }
+    $svcImg = "$($env:SystemRoot)\System32\svchost.exe"
+    $c = New-Conn @{ name = 'svchost'; image_path = $svcImg; raddr = '193.57.46.213'; rport = 7680 }
     Assert-True (Test-WhitelistMatch -Entry $do -Conn $c) 'svchost:7680 to arbitrary peer matches'
     Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'DO peer classified whitelisted'
+    # unreadable image (identity 'unknown'): an any-peer grant needs a verified image
+    $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7680 }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unknown-identity svchost gets no constraint-only entry'
+    # inbound DO peers (they connect to OUR 7680)
+    $c = New-Conn @{ name = 'svchost'; image_path = $svcImg; raddr = '193.57.46.213'; rport = 51000; lport = 7680; direction = 'inbound' }
+    Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'inbound DO peer on local 7680 whitelisted'
+    $c = New-Conn @{ name = 'svchost'; image_path = $svcImg; raddr = '193.57.46.213'; rport = 51000; lport = 3389; direction = 'inbound' }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'inbound svchost on another local port stays residual'
     $c = New-Conn @{ name = 'evil'; raddr = '193.57.46.213'; rport = 7680 }
     Assert-False (Test-WhitelistMatch -Entry $do -Conn $c) 'other process on 7680 not matched'
     $c = New-Conn @{ name = 'svchost'; raddr = '193.57.46.213'; rport = 7681 }
@@ -136,8 +147,15 @@ try {
     # --- Get-Classification --------------------------------------------------
     $c = New-Conn @{ name = 'claude'; domain = 'api.anthropic.com'; attribution_source = 'sni' }
     Assert-Equal 'whitelisted' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'whitelisted verdict'
-    $c = New-Conn @{ name = 'msedge'; domain = 'random-site.example'; attribution_source = 'sni' }
+    # msedge is pinned by install layout + Microsoft signature (identity.psm1)
+    Set-SignerProvider { param($p) 'Microsoft Corporation' }
+    if (-not ${env:ProgramFiles(x86)}) { ${env:ProgramFiles(x86)} = 'C:\Program Files (x86)' }
+    $edgeImg = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    $c = New-Conn @{ name = 'msedge'; image_path = $edgeImg; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'browser-attributed' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'browser with domain'
+    $c = New-Conn @{ name = 'msedge'; domain = 'random-site.example'; attribution_source = 'sni' }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unreadable browser image -> no browser credit'
+    Set-SignerProvider $null
     $c = New-Conn @{ name = 'msedge'; domain = $null; attribution_source = 'none' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'browser raw-IP stays escalatable'
     # operator's antidetect browser: same class as msedge (duty item 2)

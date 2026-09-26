@@ -35,6 +35,16 @@ function Get-ConnDirection {
     return 'outbound'
 }
 
+function Get-ProcessStartUtc {
+    # live start time of a PID (cheap: one OpenProcess), $null if unreadable
+    param([Parameter(Mandatory)] [int]$ProcessId)
+    try {
+        $pr = [Diagnostics.Process]::GetProcessById($ProcessId)
+        try { return $pr.StartTime.ToUniversalTime() } finally { $pr.Dispose() }
+    }
+    catch { return $null }
+}
+
 function Resolve-ProcessInfo {
     # name (lowercase, no .exe) / image_path / command_line / image_exists for
     # a PID; CIM query once per PID lifetime, cached in $PidCache.
@@ -42,20 +52,31 @@ function Resolve-ProcessInfo {
         [Parameter(Mandatory)] [int]$ProcessId,
         [Parameter(Mandatory)] [hashtable]$PidCache
     )
+    # PID reuse between two ticks (old process exits, a new one gets the PID
+    # and connects before Sync-PidCache ever sees the PID absent): the cached
+    # entry carries the process start time; a different live start time
+    # means a different process -> re-resolve. Unreadable start time (access)
+    # keeps the entry - no worse than before.
     if ($PidCache.ContainsKey($ProcessId)) {
         $info = $PidCache[$ProcessId]
+        $now = Get-ProcessStartUtc -ProcessId $ProcessId
+        if ($null -ne $info.created -and $null -ne $now -and
+            [math]::Abs(($now - $info.created).TotalSeconds) -gt 1) {
+            $PidCache.Remove($ProcessId)
+        }
     }
-    else {
+    if (-not $PidCache.ContainsKey($ProcessId)) {
         $p = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
         if ($p) {
             $info = @{
                 name         = ($p.Name -replace '\.exe$', '').ToLowerInvariant()
                 image_path   = $p.ExecutablePath
                 command_line = [string]$p.CommandLine
+                created      = if ($p.CreationDate) { ([datetime]$p.CreationDate).ToUniversalTime() } else { $null }
             }
         }
         else {
-            $info = @{ name = 'unknown'; image_path = $null; command_line = '' }
+            $info = @{ name = 'unknown'; image_path = $null; command_line = ''; created = $null }
         }
         $PidCache[$ProcessId] = $info
     }
@@ -137,5 +158,5 @@ function Test-ImageGone {
 }
 
 Export-ModuleMember -Function Get-ListenPorts, Get-ConnDirection,
-    Resolve-ProcessInfo, Get-ConnectionSample, Test-ImageGone, Sync-PidCache,
+    Resolve-ProcessInfo, Get-ProcessStartUtc, Get-ConnectionSample, Test-ImageGone, Sync-PidCache,
     Get-HostAddresses
