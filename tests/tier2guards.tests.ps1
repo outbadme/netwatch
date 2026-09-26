@@ -304,6 +304,11 @@ if ($IsWindows) {
         $null = New-Item -ItemType Directory -Force -Path (Join-Path $lroot 'Users\someone\Documents')
         $dotTarget = Join-Path $lroot ('Users\someone\Documents\..\' + 'Down' + 'loads')
         $null = cmd /c mklink /J "$(Join-Path $lroot 'dotj')" "$dotTarget"
+        # (c2) a RELATIVE symlink target keeps '..' verbatim (mklink /J may
+        # store an already-normalized absolute path)
+        if ($haveUnc) {
+            $null = [IO.Directory]::CreateSymbolicLink((Join-Path $lroot 'dotl'), ('Users\someone\Documents\..\' + 'Down' + 'loads'))
+        }
         # (d) link whose target sits under another link that points at UNC:
         # ja -> share\sub, share -> \\attacker.invalid\share (needs symlink privilege)
         if ($haveUnc) {
@@ -322,7 +327,7 @@ if ($IsWindows) {
             Assert-Equal 'path denied by policy' $r.error "${tool}: junction into Downloads denied"
             $r = Invoke-Tool $tool @('-Path', (Join-Path $j2 'fine.exe'))
             Assert-False ($r.PSObject.Properties['error']) "${tool}: local junction allowed"
-            Assert-Equal (Join-Path $ok 'fine.exe') $r.path "${tool}: reports the OS final path, not the link path"
+            Assert-True ((Join-Path $ok 'fine.exe') -ieq $r.path) "${tool}: reports the OS final path, not the link path ($($r.path))"
             if ($haveUnc) {
                 $r = Invoke-Tool $tool @('-Path', (Join-Path $uncLink 'x.exe'))
                 Assert-Equal 'network or device path denied by policy' $r.error "${tool}: symlink to UNC denied"
@@ -335,8 +340,14 @@ if ($IsWindows) {
             Assert-Equal 'path denied by policy' $r.error "${tool}: link inside a link target -> Downloads denied"
             $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'dotj\evil.exe'))
             Assert-Equal 'path denied by policy' $r.error "${tool}: '..' in a junction target -> Downloads denied"
+            if ($haveUnc) {
+                $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'dotl\evil.exe'))
+                Assert-Equal 'path denied by policy' $r.error "${tool}: relative '..' symlink target -> Downloads denied"
+            }
             $r = Invoke-Tool $tool @('-Path', "$dl.\evil.exe")
-            Assert-Equal 'path denied by policy' $r.error "${tool}: trailing dot on Downloads denied"
+            Assert-Equal 'trailing dot or space in a path segment denied by policy' $r.error "${tool}: trailing dot on Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', "$ok \fine.exe")
+            Assert-Equal 'trailing dot or space in a path segment denied by policy' $r.error "${tool}: trailing space in a middle segment denied"
             $r = Invoke-Tool $tool @('-Path', "$(Join-Path $ok 'fine.exe'):hidden")
             Assert-Equal 'alternate data stream denied by policy' $r.error "${tool}: NTFS stream denied"
             $r = Invoke-Tool $tool @('-Path', "${dl}:hidden")
@@ -358,7 +369,7 @@ if ($IsWindows) {
     finally {
         if ($haveSubst) { $null = subst "${substLetter}:" /d }
         foreach ($lnk in 'mid\inner') { try { [IO.Directory]::Delete((Join-Path $lroot $lnk)) } catch {} }
-        foreach ($lnk in 'innocent', 'okjunction', 'share', 'profj', 'chain', 'dotj', 'ja') {
+        foreach ($lnk in 'innocent', 'okjunction', 'share', 'profj', 'chain', 'dotj', 'dotl', 'ja') {
             $lp = Join-Path $lroot $lnk
             # no Test-Path: it would follow the UNC link. Delete removes the
             # link itself, never its target.

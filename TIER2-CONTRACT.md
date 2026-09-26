@@ -46,9 +46,14 @@ components, so no path with an unvetted link reaches the OS; the file is
 then opened for attributes only and the OS's own final name
 (GetFinalPathNameByHandle: long names, links, subst drives resolved) is
 checked again, and the tool works on that name. Also refused: NTFS streams
-(`file:stream`), cloud placeholders (offline/recall attributes - reading
-them downloads content), and any path whose attributes cannot be read
-(only "not found" is reported as such);
+(`file:stream`, also in link targets and the final name), path segments
+ending in `.` or space (Win32 trims those only from the last segment, so a
+prefix check would vet a different entry), cloud placeholders
+(offline/recall attributes - reading them downloads content), and any path
+whose attributes cannot be read (only "not found" is reported as such).
+Residual, all needing code already running as this user: a directory
+swapped for a link after it was vetted, and a subst drive whose target is
+itself a link;
 any write/modify/delete operation (none exist in the scripts at all).
 
 ### 1.1 `check_signature`

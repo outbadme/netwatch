@@ -27,8 +27,13 @@ function Out-Result($obj) { $obj | ConvertTo-Json -Depth 4; exit 0 }
 #  3. the file is opened for ATTRIBUTES only (no content read) and the OS's own
 #     final name (GetFinalPathNameByHandle: long names, links and subst drives
 #     resolved) is vetted once more. The tool then works on that final name.
-# Residual: code that owns a directory on the final path can swap it between
-# step 3 and the tool's own open - that code already runs locally.
+# A segment ending in '.' or ' ' is refused: Win32 trims those only from the
+# LAST segment, so checking a prefix would vet a different entry than the one
+# the full path later traverses.
+# Residual (all need code already running as this user): a directory on the
+# path swapped for a link between the walk and step 3, or between step 3 and
+# the tool's own open; a subst drive whose target is itself a link (the walk
+# starts below the drive letter).
 function Resolve-PolicyPath([string]$InputPath) {
     $netErr = 'network or device path denied by policy'
     $isDownloads = { param($p) $p -match '(?i)\\Users\\[^\\]+\\Downloads(\\|:|$)' }
@@ -43,10 +48,11 @@ function Resolve-PolicyPath([string]$InputPath) {
     # //host/share and device paths never get further
     if ($InputPath -notmatch '^[A-Za-z]:[\\/]') { return @{ error = $netErr } }
     try { $p = [IO.Path]::GetFullPath($InputPath) } catch { return @{ error = 'path not normalizable' } }
-    if ($p.IndexOf(':', 2) -ge 0) { return @{ error = 'alternate data stream denied by policy' } }
-
+    $streamErr = 'alternate data stream denied by policy'
     for ($restart = 0; ; $restart++) {
         if ($restart -ge 32) { return @{ error = $netErr } }              # link loop / chain too deep
+        if ($p.IndexOf(':', 2) -ge 0) { return @{ error = $streamErr } }  # input and every link target
+        if ($p -match '[. ](\\|$)') { return @{ error = 'trailing dot or space in a path segment denied by policy' } }
         if (-not (& $isLocalDrive $p)) { return @{ error = $netErr } }
         if (& $isDownloads $p) { return @{ error = 'path denied by policy' } }
         [string[]]$parts = $p.Substring(3).Split('\', [StringSplitOptions]::RemoveEmptyEntries)
@@ -100,9 +106,11 @@ public static class NwPathNative {
 }
 '@
     }
-    try { $final = [NwPathNative]::FinalPath($p) } catch { return @{ error = 'path not inspectable - denied by policy' } }
+    # \\?\ : $p is already normalized; the prefix only lifts MAX_PATH
+    try { $final = [NwPathNative]::FinalPath('\\?\' + $p) } catch { return @{ error = 'path not inspectable - denied by policy' } }
     if ($final.StartsWith('\\?\UNC\')) { return @{ error = $netErr } }
     if ($final.StartsWith('\\?\')) { $final = $final.Substring(4) }
+    if ($final.IndexOf(':', 2) -ge 0) { return @{ error = $streamErr } }
     if (-not (& $isLocalDrive $final)) { return @{ error = $netErr } }
     if (& $isDownloads $final) { return @{ error = 'path denied by policy' } }
     if (-not (Test-Path -LiteralPath $final -PathType Leaf)) { return @{ error = 'file not found' } }
