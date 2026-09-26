@@ -28,9 +28,11 @@ function Out-Result($obj) { $obj | ConvertTo-Json -Depth 6; exit 0 }
 #  3. the file is opened for ATTRIBUTES only (no content read) and the OS's own
 #     final name (GetFinalPathNameByHandle: long names, links and subst drives
 #     resolved) is vetted once more. The tool then works on that final name.
-# A segment ending in '.' or ' ' is refused: Win32 trims those only from the
-# LAST segment, so checking a prefix would vet a different entry than the one
-# the full path later traverses.
+# A segment ending in '.' or ' ' is refused (backstop): Win32 trims those
+# when it opens a path, so a checked prefix and the opened path could name
+# different entries. GetFullPath already strips trailing dots from every
+# segment (observed on the Windows CI runner); the rule covers any spelling
+# it keeps.
 # Residual (all need code already running as this user): a directory on the
 # path swapped for a link between the walk and step 3, or between step 3 and
 # the tool's own open; a subst drive whose target is itself a link (the walk

@@ -47,8 +47,8 @@ then opened for attributes only and the OS's own final name
 (GetFinalPathNameByHandle: long names, links, subst drives resolved) is
 checked again, and the tool works on that name. Also refused: NTFS streams
 (`file:stream`, also in link targets and the final name), path segments
-ending in `.` or space (Win32 trims those only from the last segment, so a
-prefix check would vet a different entry), cloud placeholders
+ending in `.` or space (a backstop: Win32 trims those on open, so a checked
+prefix and the opened path could differ), cloud placeholders
 (offline/recall attributes - reading them downloads content), and any path
 whose attributes cannot be read (only "not found" is reported as such).
 Residual, all needing code already running as this user: a directory

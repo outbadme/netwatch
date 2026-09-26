@@ -344,10 +344,14 @@ if ($IsWindows) {
                 $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'dotl\evil.exe'))
                 Assert-Equal 'path denied by policy' $r.error "${tool}: relative '..' symlink target -> Downloads denied"
             }
+            # GetFullPath already strips a trailing dot from middle segments
+            # (CI, 2026-09-26); the segment rule is the backstop for any form
+            # it keeps. Either way the checked entry must be the opened one.
+            $trailErr = 'trailing dot or space in a path segment denied by policy'
             $r = Invoke-Tool $tool @('-Path', "$dl.\evil.exe")
-            Assert-Equal 'trailing dot or space in a path segment denied by policy' $r.error "${tool}: trailing dot on Downloads denied"
+            Assert-True ($r.error -in 'path denied by policy', $trailErr) "${tool}: trailing dot on Downloads denied ($($r.error))"
             $r = Invoke-Tool $tool @('-Path', "$ok \fine.exe")
-            Assert-Equal 'trailing dot or space in a path segment denied by policy' $r.error "${tool}: trailing space in a middle segment denied"
+            Assert-True ($r.error -eq $trailErr -or ((Join-Path $ok 'fine.exe') -ieq $r.path)) "${tool}: trailing space in a middle segment: denied or the same real file ($($r.error)$($r.path))"
             $r = Invoke-Tool $tool @('-Path', "$(Join-Path $ok 'fine.exe'):hidden")
             Assert-Equal 'alternate data stream denied by policy' $r.error "${tool}: NTFS stream denied"
             $r = Invoke-Tool $tool @('-Path', "${dl}:hidden")
