@@ -125,7 +125,9 @@ function Test-ExcludedFromLookup {
     if ($canon -in $own) { return 'own public ip' }
     $embedded = Get-EmbeddedIPv4 -Ip $canon
     if ($embedded -and $embedded -in $own) { return 'own public ip' }
-    return Test-NonRoutableIp -Ip $canon
+    $reason = Test-NonRoutableIp -Ip $canon
+    if (-not $reason -and $embedded) { $reason = Test-NonRoutableIp -Ip $embedded }
+    return $reason
 }
 
 function Get-CymruAsn {

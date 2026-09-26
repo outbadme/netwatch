@@ -137,13 +137,22 @@ $mutexName = 'netwatch-repquota-' + [Convert]::ToHexString(
     [System.Security.Cryptography.SHA256]::HashData(
         [Text.Encoding]::UTF8.GetBytes($ledgerFile.ToLowerInvariant()))).Substring(0, 16)
 $ledgerMutex = [System.Threading.Mutex]::new($false, $mutexName)
-$lockWaitMs = if ($env:NETWATCH_LEDGER_WAIT_MS) { [int]$env:NETWATCH_LEDGER_WAIT_MS } else { 5000 }
+# Time budget vs the MCP server's 20 s per-call kill: pwsh startup (~1-3 s)
+# + reserve wait (<= 1 s) + 2 lookups (6 s each) + refund wait (<= 1 s)
+# stays under 20 s. A kill after the reserve would leak the reservation.
+$lockWaitMs = if ($env:NETWATCH_LEDGER_WAIT_MS) { [int]$env:NETWATCH_LEDGER_WAIT_MS } else { 1000 }
 
-function Invoke-LedgerLocked([scriptblock]$Body) {
+function Invoke-LedgerLocked([scriptblock]$Body, [switch]$BestEffort) {
+    # Default: a busy ledger fails closed BEFORE any lookup (nothing spent).
+    # -BestEffort (post-lookup refund): a busy ledger returns $null instead -
+    # results already fetched must never be discarded over bookkeeping.
     $held = $false
     try { $held = $ledgerMutex.WaitOne($lockWaitMs) }
     catch [System.Threading.AbandonedMutexException] { $held = $true }   # previous holder was killed
-    if (-not $held) { Out-Result @{ error = 'quota ledger busy'; abuseipdb_note = 'lookup_unavailable'; virustotal_note = 'lookup_unavailable' } }
+    if (-not $held) {
+        if ($BestEffort) { return $null }
+        Out-Result @{ error = 'quota ledger busy'; abuseipdb_note = 'lookup_unavailable'; virustotal_note = 'lookup_unavailable' }
+    }
     try { return & $Body }
     finally { $ledgerMutex.ReleaseMutex() }
 }
@@ -197,6 +206,7 @@ $grant = Invoke-LedgerLocked {
     }
     if ($abuseKey -and $abAllowed) { $l.abuse_today++; $g.ab = $true }
     if ($g.vt -or $g.ab) { Write-Ledger $l }
+    $g.vt_today = $l.vt_today; $g.abuse_today = $l.abuse_today   # snapshot for the report
     $g
 }
 if (-not $grant.vtAllowed -and -not $grant.abAllowed) { Out-Result @{ quota_exhausted = $true } }
@@ -245,20 +255,26 @@ else                 { $result['virustotal_note'] = 'quota_exhausted' }
 # refund reservations whose lookup failed (quota is spent on success only)
 $refundVt = $grant.vt -and -not $spentVt
 $refundAb = $grant.ab -and -not $spentAb
-$ledger = Invoke-LedgerLocked {
-    $l = Read-Ledger
-    if ($refundVt -or $refundAb) {
+$counts = @{ vt_today = $grant.vt_today; abuse_today = $grant.abuse_today }
+if ($refundVt -or $refundAb) {
+    # lock taken ONLY when there is something to give back; a busy ledger
+    # skips the refund (over-counts by one, never over-spends) and keeps the
+    # already-fetched answers
+    $refunded = Invoke-LedgerLocked -BestEffort {
+        $l = Read-Ledger
         if ($refundVt) {
             $l.vt_today = [math]::Max(0, $l.vt_today - 1)
             $l.vt_minute = @(@($l.vt_minute) | Where-Object { -not ($_ -is [string] -and $_ -eq $stamp) })
         }
         if ($refundAb) { $l.abuse_today = [math]::Max(0, $l.abuse_today - 1) }
         Write-Ledger $l
+        @{ vt_today = $l.vt_today; abuse_today = $l.abuse_today }
     }
-    $l
+    if ($refunded) { $counts = $refunded }
+    else { $result['quota_note'] = 'refund_skipped_ledger_busy' }
 }
 $result.quota = @{
-    vt_remaining_today    = [math]::Max(0, $vtPerDay - $ledger.vt_today)
-    abuse_remaining_today = [math]::Max(0, $abPerDay - $ledger.abuse_today)
+    vt_remaining_today    = [math]::Max(0, $vtPerDay - $counts.vt_today)
+    abuse_remaining_today = [math]::Max(0, $abPerDay - $counts.abuse_today)
 }
 Out-Result $result

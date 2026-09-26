@@ -81,6 +81,17 @@ function Get-Whitelist {
         }
         $wl = $raw | ConvertFrom-Json
         $script:LastGoodWhitelist = $wl
+        # inert entries (no destination and not process+port) never match;
+        # say so once per load instead of failing the file (schema $comment)
+        foreach ($e in @($wl.entries)) {
+            $m = $e.match
+            $has = { param($f) [bool]($m.PSObject.Properties[$f] -and @($m.$f).Count -gt 0) }
+            $dest = (& $has 'domains') -or (& $has 'domain_suffixes') -or (& $has 'cidrs')
+            $pinned = (& $has 'processes') -and ((& $has 'ports') -or (& $has 'local_ports'))
+            if (-not $dest -and -not $pinned) {
+                Write-OpLog -Config $Config -Level WARN -Message "whitelist entry '$($e.id)' is inert (no domains/domain_suffixes/cidrs and not processes+ports) - it never matches"
+            }
+        }
         return $wl
     }
     catch {

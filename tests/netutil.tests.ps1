@@ -47,9 +47,13 @@ Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '::ffff:10.0.0.1')     'v4-map
 Assert-Equal 'loopback'   (Test-NonRoutableIp -Ip '::ffff:127.0.0.1')    'v4-mapped loopback'
 Assert-Equal 'cgnat'      (Test-NonRoutableIp -Ip '::ffff:100.64.0.5')   'v4-mapped cgnat'
 Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '167772161')           'decimal spelling of 10.0.0.1'
-Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '64:ff9b::a00:1')      'NAT64-embedded private'
-Assert-Equal 'rfc1918'    (Test-NonRoutableIp -Ip '2002:c0a8:0101::1')   '6to4-embedded 192.168.1.1'
 Assert-Equal 'tunnel'     (Test-NonRoutableIp -Ip '2001:0:4136:e378::1') 'teredo refused'
+# embedded IPv4 is NOT judged here: a 6to4/NAT64 address wrapping 127.x or
+# 169.254.x is a routable v6 destination, and 'loopback'/'link-local' would
+# turn it into silent local-noise in classify (review finding)
+Assert-Null  (Test-NonRoutableIp -Ip '2002:7f00:1::1')                   '6to4 wrapping 127.x is not loopback'
+Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b::a9fe:a9fe')               'NAT64 wrapping 169.254.x is not link-local'
+Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b::a00:1')                   'NAT64 wrapping rfc1918 judged by lookup guard only'
 Assert-Equal 'reserved'   (Test-NonRoutableIp -Ip '::')                  'v6 unspecified'
 Assert-Null  (Test-NonRoutableIp -Ip '::ffff:8.8.8.8')                   'v4-mapped public stays routable'
 Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b::808:808')                 'NAT64 public stays routable'

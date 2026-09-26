@@ -119,6 +119,47 @@ try {
         finally {
             Remove-Item Env:VT_KEY, Env:ABUSEIPDB_KEY -ErrorAction SilentlyContinue
         }
+
+        # --- busy ledger AFTER the lookup: answer kept, refund skipped --------
+        # The VT call goes to a local black-hole proxy (accepts, never
+        # answers) so it hangs for its 6 s timeout - a deterministic window in
+        # which this test holds the ledger mutex. No traffic leaves the host.
+        Remove-Item -LiteralPath $ledgerFile -Force -ErrorAction SilentlyContinue
+        $hole = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+        $hole.Start()
+        $savedProxy = $env:HTTPS_PROXY
+        $env:HTTPS_PROXY ="http://127.0.0.1:$($hole.LocalEndpoint.Port)"
+        $env:VT_KEY = 'bogus-test-key'
+        $env:NETWATCH_LEDGER_WAIT_MS = '300'
+        $m = [System.Threading.Mutex]::new($false, $mutexName)
+        $held = $false
+        try {
+            $psi = [System.Diagnostics.ProcessStartInfo]::new((Get-Command pwsh).Source)
+            foreach ($a in '-NoProfile', '-File', (Join-Path $tools 'check-reputation.ps1'), '-Ip', '8.8.8.8') { $psi.ArgumentList.Add($a) }
+            $psi.RedirectStandardOutput = $true
+            $psi.UseShellExecute = $false
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $outTask = $p.StandardOutput.ReadToEndAsync()
+            # reservation written = tool released the mutex and is in its lookup
+            $deadline = [datetime]::UtcNow.AddSeconds(15)
+            while (-not (Test-Path -LiteralPath $ledgerFile) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 20 }
+            Assert-True (Test-Path -LiteralPath $ledgerFile) 'reservation written before the lookup'
+            $held = $m.WaitOne(5000)
+            Assert-True $held 'test took the ledger mutex during the lookup'
+            Assert-True ($p.WaitForExit(20000)) 'tool finished within the MCP 20 s cap'
+            $r = $outTask.Result | ConvertFrom-Json
+            Assert-False ($r.PSObject.Properties['error']) 'busy ledger after lookup does not turn into an error'
+            Assert-Equal 'lookup_unavailable' $r.virustotal_note 'lookup outcome still reported'
+            Assert-Equal 'refund_skipped_ledger_busy' $r.quota_note 'skipped refund is flagged'
+            $l = Get-Content -LiteralPath $ledgerFile -Raw | ConvertFrom-Json
+            Assert-Equal 1 $l.vt_today 'skipped refund over-counts by one (never over-spends)'
+        }
+        finally {
+            if ($held) { $m.ReleaseMutex() }
+            $m.Dispose(); $hole.Stop()
+            Remove-Item Env:VT_KEY, Env:NETWATCH_LEDGER_WAIT_MS -ErrorAction SilentlyContinue
+            if ($savedProxy) { $env:HTTPS_PROXY = $savedProxy } else { Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue }
+        }
     }
     finally { Remove-Item Env:NETWATCH_STATE -ErrorAction SilentlyContinue }
 }

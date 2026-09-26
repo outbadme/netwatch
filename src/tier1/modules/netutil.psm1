@@ -96,8 +96,11 @@ function Test-NonRoutableIp {
         if ($Ip -eq '::')                           { return 'reserved' }
         # Teredo embeds the client's (obfuscated) public IPv4 - never send it
         if (Test-IpInCidr -Ip $Ip -Cidr '2001::/32') { return 'tunnel' }
-        $embedded = Get-EmbeddedIPv4 -Ip $Ip
-        if ($embedded) { return Test-NonRoutableIp -Ip $embedded }
+        # NB: the IPv4 embedded in NAT64/6to4 addresses is deliberately NOT
+        # judged here - classify.psm1 maps 'loopback'/'link-local' to
+        # local-noise, and 2002:7f00:1::1 is a real routable destination that
+        # must stay visible. Embedded-IPv4 guarding belongs to the lookup
+        # exclusion only (enrich.psm1 Test-ExcludedFromLookup).
         return $null
     }
 
