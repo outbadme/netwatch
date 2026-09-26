@@ -12,6 +12,7 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'state.psm1')
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')
 
 $script:CacheTtlHours = 2
 
@@ -170,6 +171,10 @@ function ConvertFrom-TsharkLine {
     $hostHdr = if ($f.Count -ge 5) { $f[4].Trim() } else { '' }
     $port = 0
     if (-not $ip -or -not [int]::TryParse($f[2].Trim(), [ref]$port)) { return $null }
+    # cache key must match the canonical raddr sampling produces (RFC 5952
+    # compression/case may differ between tshark and .NET)
+    $canon = ConvertTo-CanonicalIp -Ip $ip
+    if ($canon) { $ip = $canon }
     if ($sni) {
         # some captures report multiple SNIs comma-joined; first one wins
         return @{ ip = $ip; port = $port; source = 'sni'
@@ -331,7 +336,9 @@ function Resolve-SniAttribution {
         [Parameter(Mandatory)] [hashtable]$Caches,
         [Parameter(Mandatory)] $Conn
     )
-    $key = "$($Conn.raddr):$($Conn.rport)"
+    $ip = ConvertTo-CanonicalIp -Ip ([string]$Conn.raddr)
+    if (-not $ip) { $ip = [string]$Conn.raddr }
+    $key = "${ip}:$($Conn.rport)"
     if ($Caches.sni.ContainsKey($key)) {
         $hit = $Caches.sni[$key]
         return @{ source = $hit.source; domain = $hit.domain }

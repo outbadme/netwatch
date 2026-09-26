@@ -7,6 +7,7 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'state.psm1')
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')
 
 $script:ChannelName = 'Microsoft-Windows-DNS-Client/Operational'
 $script:CacheTtlHours = 2
@@ -28,7 +29,9 @@ function Test-DnsEtwAvailable {
 function ConvertFrom-DnsQueryResults {
     # 3008 QueryResults string -> resolved IP literals.
     # Format: "type:  5 cname;type:  1 1.2.3.4;" (5=CNAME skipped, 1=A,
-    # 28=AAAA); some events carry bare "ip;" entries.
+    # 28=AAAA); some events carry bare "ip;" entries. IPs are returned in
+    # canonical form (ConvertTo-CanonicalIp): sampling canonicalizes raddr, so
+    # a '::ffff:a.b.c.d' key here would never match a connection.
     param([AllowEmptyString()] [string]$Text)
     $ips = [System.Collections.Generic.List[string]]::new()
     if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
@@ -40,12 +43,12 @@ function ConvertFrom-DnsQueryResults {
             if ($m.Groups[1].Value -in '1', '28') {
                 $val = $m.Groups[2].Value.Trim()
                 $addr = $null
-                if ([System.Net.IPAddress]::TryParse($val, [ref]$addr)) { $ips.Add($val) }
+                if ([System.Net.IPAddress]::TryParse($val, [ref]$addr)) { $ips.Add((ConvertTo-CanonicalIp -Ip $val)) }
             }
             continue
         }
         $addr = $null
-        if ([System.Net.IPAddress]::TryParse($c, [ref]$addr)) { $ips.Add($c) }
+        if ([System.Net.IPAddress]::TryParse($c, [ref]$addr)) { $ips.Add((ConvertTo-CanonicalIp -Ip $c)) }
     }
     return @($ips)
 }
@@ -167,7 +170,9 @@ function Update-DnsClientCache {
     foreach ($e in $Entries) {
         $ttl = [math]::Min([math]::Max([int]$e.ttl_sec, 0), $capSec)
         if ($ttl -le 0) { continue }
-        $Caches.dns_cache[$e.ip] = @{
+        $ipKey = ConvertTo-CanonicalIp -Ip ([string]$e.ip)
+        if (-not $ipKey) { continue }
+        $Caches.dns_cache[$ipKey] = @{
             domain  = ([string]$e.domain).ToLowerInvariant().TrimEnd('.')
             expires = $NowUtc.AddSeconds($ttl)
         }
@@ -185,7 +190,9 @@ function Update-DnsCaches {
     )
     $expires = $NowUtc.AddHours($script:CacheTtlHours)
     foreach ($e in $Events) {
-        foreach ($ip in $e.ips) {
+        foreach ($rawIp in $e.ips) {
+            $ip = ConvertTo-CanonicalIp -Ip ([string]$rawIp)
+            if (-not $ip) { continue }
             if (-not $Caches.dns_ip.ContainsKey($ip)) {
                 $Caches.dns_ip[$ip] = @{ domains = [System.Collections.Generic.List[string]]::new(); expires = $expires }
             }
@@ -211,18 +218,21 @@ function Resolve-DnsAttribution {
         [Parameter(Mandatory)] [hashtable]$Caches,
         [Parameter(Mandatory)] $Conn
     )
-    $pidKey = "$($Conn.pid)|$($Conn.raddr)"
+    # keys are canonical (see ConvertFrom-DnsQueryResults); so is the lookup
+    $ip = ConvertTo-CanonicalIp -Ip ([string]$Conn.raddr)
+    if (-not $ip) { $ip = [string]$Conn.raddr }
+    $pidKey = "$($Conn.pid)|$ip"
     if ($Caches.dns_pidip.ContainsKey($pidKey)) {
         return @{ source = 'dns-pid'; domain = $Caches.dns_pidip[$pidKey].domain }
     }
-    if ($Caches.dns_ip.ContainsKey($Conn.raddr)) {
-        $domains = $Caches.dns_ip[$Conn.raddr].domains
+    if ($Caches.dns_ip.ContainsKey($ip)) {
+        $domains = $Caches.dns_ip[$ip].domains
         if ($domains.Count -gt 0) {
             return @{ source = 'dns-ip'; domain = $domains[$domains.Count - 1] }   # most recent
         }
     }
-    if ($Caches.ContainsKey('dns_cache') -and $Caches.dns_cache.ContainsKey($Conn.raddr)) {
-        return @{ source = 'dns-cache'; domain = $Caches.dns_cache[$Conn.raddr].domain }
+    if ($Caches.ContainsKey('dns_cache') -and $Caches.dns_cache.ContainsKey($ip)) {
+        return @{ source = 'dns-cache'; domain = $Caches.dns_cache[$ip].domain }
     }
     return @{ source = 'none'; domain = $null }
 }
