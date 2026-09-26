@@ -83,6 +83,10 @@ try {
     $cmdLen = ($argv -join ' ').Length
     Assert-True ($cmdLen -lt 2000) "argv stays short ($cmdLen chars; cmd.exe limit 8191)"
 
+    # --- session-limit envelope with exit 0 -> quota (6), not invalid output (4)
+    $rc = Invoke-Launcher 'quota0'
+    Assert-Equal 6 $rc '429 envelope with exit 0 classified as quota exhausted'
+
     # --- alarm ---------------------------------------------------------------
     $rc = Invoke-Launcher 'alarm'
     Assert-Equal 0 $rc 'alarm run exit 0 (valid verdict)'
@@ -165,9 +169,12 @@ try {
 
     # --- prompt copies stay in sync (drift found 2026-08-27: 3820afd updated
     # prompts/ but not src/tier2/, and the launcher loads src/tier2/) ---------
-    $designPrompt  = @(Get-Content "$PSScriptRoot\..\prompts\tier2-system-prompt.md" | Select-Object -Skip 1)
-    $runtimePrompt = @(Get-Content "$PSScriptRoot\..\src\tier2\system-prompt.md"     | Select-Object -Skip 1)
-    Assert-Equal ($designPrompt -join "`n") ($runtimePrompt -join "`n") 'design and runtime system prompts identical below the header'
+    # whole file, header included: skipping line 1 hid a stale header that
+    # still described the inline --system-prompt form (review 2026-09-26)
+    $designPrompt  = @(Get-Content "$PSScriptRoot\..\prompts\tier2-system-prompt.md")
+    $runtimePrompt = @(Get-Content "$PSScriptRoot\..\src\tier2\system-prompt.md")
+    Assert-Equal ($designPrompt -join "`n") ($runtimePrompt -join "`n") 'design and runtime system prompts identical'
+    Assert-True ($runtimePrompt[0] -match '--system-prompt-file') 'prompt header names the flag the launcher actually uses'
 
     # --- timeout salvage (D9): the kill may land AFTER the analysis finished.
     # Live 20260828-103245-317: 182s vs 180s cap, salvaged stdout held a full
@@ -201,6 +208,17 @@ try {
     Assert-Equal 2 $v.verdict.connections.Count 'all keys in the rebuilt verdict'
     Assert-True ([bool]$v.verdict.summary) 'summary rebuilt'
     Assert-Null $v.PSObject.Properties['uncovered_keys'] 'no uncovered_keys on complete acceptance'
+
+    # --- salvage with a DUPLICATE key: clean then suspicious. The first-wins
+    # dedup validated the key as clean and suppressed it (review 2026-09-26);
+    # suspicious must win and the rebuilt verdict must be ALARM
+    $rc = Invoke-Launcher 'hangdupe'
+    Assert-Equal 0 $rc 'fully covered duplicate-key salvage accepted'
+    $v = Get-Content (Join-Path $root 'escalations\20260827-000001-verdict.json') -Raw | ConvertFrom-Json
+    Assert-Equal 'ALARM' $v.verdict.verdict 'duplicate key with a suspicious answer -> ALARM'
+    Assert-Equal 2 $v.verdict.connections.Count 'one entry per packet key'
+    $dup = @($v.verdict.connections | Where-Object key -eq 'proca|1.2.3.4|443')
+    Assert-Equal 'suspicious' $dup[0].assessment 'suspicious wins over the earlier clean'
 
     # --- verdict schema is parseable AND enforced (reviewer M1: the cross-file
     # $ref made Test-Json fail with "Cannot parse the JSON schema", so nothing

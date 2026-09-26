@@ -46,12 +46,14 @@ else {
     Write-Host "config written -> $ConfigOut"
 }
 
-# --- mcp-config.json (absolute server path; command via PATH) ----------------
+# --- mcp-config.json (absolute server AND node paths) --------------------------
 $mcp = [ordered]@{
     mcpServers = [ordered]@{
         netwatch = [ordered]@{
             type    = 'stdio'
-            command = 'node'
+            # absolute, resolved once at deploy (TIER2-CONTRACT 2): a node shim
+            # earlier in the Tier-2 child's PATH must not run the MCP server
+            command = (Get-Command node -ErrorAction Stop).Source
             args    = @((Join-Path $repoRoot 'src\tier2\mcp-server\server.mjs'))
             env     = [ordered]@{
                 NETWATCH_STATE = $StateRoot

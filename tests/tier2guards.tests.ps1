@@ -51,6 +51,8 @@ try {
                 @{ ip = '::ffff:0:a00:1';       want = 'rfc1918' }        # SIIT private
                 @{ ip = '64:ff9b:1::cb00:710a'; want = 'tunnel' }         # local-use NAT64
                 @{ ip = '::';                   want = 'reserved' }
+                @{ ip = 'fec0::1';              want = 'site-local' }      # deprecated site-local
+                @{ ip = '2001:db8::1';          want = 'documentation' }   # RFC 3849
             )) {
             $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', $case.ip)
             Assert-True ($r.PSObject.Properties['refused']) "refused present for $($case.ip)"
@@ -60,8 +62,8 @@ try {
         # --- accepted input is echoed (and looked up) in canonical form ------
         $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '::ffff:8.8.8.8')
         Assert-Equal '8.8.8.8' $r.ip 'v4-mapped public canonicalized'
-        $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '2001:db8::1%junk&x=y')
-        Assert-Equal '2001:db8::1' $r.ip 'scope suffix (URL injection) stripped'
+        $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '2606:4700::1%junk&x=y')
+        Assert-Equal '2606:4700::1' $r.ip 'scope suffix (URL injection) stripped'
         $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '134744072')
         Assert-Equal '8.8.8.8' $r.ip 'decimal public canonicalized'
         Assert-False (Test-Path -LiteralPath $ledgerFile) 'keyless runs never touch the ledger'
@@ -210,6 +212,38 @@ finally {
     Remove-TestStateRoot $root
 }
 
+# --- fail-closed state handling (review 2026-09-26) --------------------------
+$root = New-TestStateRoot
+try {
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $root 'state')
+    $env:NETWATCH_STATE = $root
+    try {
+        # a readable ownip.json that yields no own IP proves nothing
+        '{}' | Set-Content (Join-Path $root 'state\ownip.json')
+        $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '8.8.8.8')
+        Assert-Equal 'own-ip state empty (fail closed)' $r.refused 'empty own-ip state refuses'
+        @{ detected = @('5.6.7.8'); last_known = @(); recorded_static = @(); previous = @() } |
+            ConvertTo-Json | Set-Content (Join-Path $root 'state\ownip.json')
+
+        # a torn ledger must not re-zero the day's counters
+        $ledgerFile = Join-Path $root 'state\repquota.json'
+        '{"date":"20' | Set-Content $ledgerFile
+        $env:VT_KEY = 'bogus-test-key'
+        try {
+            $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '8.8.8.8')
+            Assert-Equal 'quota ledger unreadable' $r.error 'torn ledger -> no lookup (fail closed)'
+            Assert-Equal '{"date":"20' (Get-Content $ledgerFile -Raw).Trim() 'torn ledger left untouched for housekeeping'
+            '{"date":"2026-01-01"}' | Set-Content $ledgerFile            # parses, but fields missing
+            $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', '8.8.8.8')
+            Assert-Equal 'quota ledger unreadable' $r.error 'malformed ledger (missing fields) -> fail closed'
+        }
+        finally { Remove-Item Env:VT_KEY -ErrorAction SilentlyContinue }
+        Assert-Equal 0 @(Get-ChildItem (Join-Path $root 'state') -Filter '*.tmp').Count 'no temp files left behind'
+    }
+    finally { Remove-Item Env:NETWATCH_STATE -ErrorAction SilentlyContinue }
+}
+finally { Remove-TestStateRoot $root }
+
 # --- path tools: network / device paths refused before any I/O --------------
 # Windows path semantics (IsPathRooted, UNC); the hosts are .invalid (RFC 6761)
 # so even a regression cannot reach a real machine.
@@ -252,19 +286,76 @@ if ($IsWindows) {
         try { $null = [IO.Directory]::CreateSymbolicLink($uncLink, '\\attacker.invalid\share') }
         catch { $haveUnc = $false; Write-Host "SKIP: symlink-to-UNC case (no symlink privilege: $($_.Exception.Message))" -ForegroundColor Yellow }
 
+        # --- bypasses found by the 2026-09-26 reviews ---------------------------
+        # (a) junction onto a PROFILE: C:\a -> ...\Users\victim, path a\Downloads\x
+        $victim = Join-Path $lroot 'Users\victim'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $victim ('Down' + 'loads'))
+        'z' | Set-Content (Join-Path $victim (('Down' + 'loads') + '\evil.exe'))
+        $null = New-Item -ItemType Junction -Path (Join-Path $lroot 'profj') -Target $victim
+        # (b) link INSIDE a link target: chain -> mid, mid\inner -> Downloads
+        $mid = Join-Path $lroot 'mid'
+        $null = New-Item -ItemType Directory -Force -Path $mid
+        $null = New-Item -ItemType Junction -Path (Join-Path $mid 'inner') -Target $dl
+        $null = New-Item -ItemType Junction -Path (Join-Path $lroot 'chain') -Target $mid
+        # (c) '..' inside a stored junction target (mklink keeps the string as given)
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $lroot 'Users\someone\Documents')
+        $dotTarget = Join-Path $lroot ('Users\someone\Documents\..\' + 'Down' + 'loads')
+        $null = cmd /c mklink /J "$(Join-Path $lroot 'dotj')" "$dotTarget"
+        # (d) link whose target sits under another link that points at UNC:
+        # ja -> share\sub, share -> \\attacker.invalid\share (needs symlink privilege)
+        if ($haveUnc) {
+            $null = [IO.Directory]::CreateSymbolicLink((Join-Path $lroot 'ja'), (Join-Path $uncLink 'sub'))
+        }
+        # (e) 8.3 short name of the Downloads-shaped dir (only if 8.3 is enabled here)
+        $short = $null
+        try { $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($dl).ShortPath } catch {}
+        # (f) subst drive onto the Downloads-shaped dir
+        $substLetter = @('Q', 'R', 'S', 'T', 'U', 'V', 'W') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+        $haveSubst = $false
+        if ($substLetter) { $null = subst "${substLetter}:" "$dl"; $haveSubst = ($LASTEXITCODE -eq 0) }
+
         foreach ($tool in 'check-signature.ps1', 'hash-file.ps1') {
             $r = Invoke-Tool $tool @('-Path', (Join-Path $j 'evil.exe'))
             Assert-Equal 'path denied by policy' $r.error "${tool}: junction into Downloads denied"
             $r = Invoke-Tool $tool @('-Path', (Join-Path $j2 'fine.exe'))
             Assert-False ($r.PSObject.Properties['error']) "${tool}: local junction allowed"
+            Assert-Equal (Join-Path $ok 'fine.exe') $r.path "${tool}: reports the OS final path, not the link path"
             if ($haveUnc) {
                 $r = Invoke-Tool $tool @('-Path', (Join-Path $uncLink 'x.exe'))
                 Assert-Equal 'network or device path denied by policy' $r.error "${tool}: symlink to UNC denied"
+                $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'ja\x.exe'))
+                Assert-Equal 'network or device path denied by policy' $r.error "${tool}: UNC link inside a link target denied"
             }
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot (('profj\' + 'Down' + 'loads') + '\evil.exe')))
+            Assert-Equal 'path denied by policy' $r.error "${tool}: junction onto a profile -> Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'chain\inner\evil.exe'))
+            Assert-Equal 'path denied by policy' $r.error "${tool}: link inside a link target -> Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $lroot 'dotj\evil.exe'))
+            Assert-Equal 'path denied by policy' $r.error "${tool}: '..' in a junction target -> Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', "$dl.\evil.exe")
+            Assert-Equal 'path denied by policy' $r.error "${tool}: trailing dot on Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', "$(Join-Path $ok 'fine.exe'):hidden")
+            Assert-Equal 'alternate data stream denied by policy' $r.error "${tool}: NTFS stream denied"
+            $r = Invoke-Tool $tool @('-Path', "${dl}:hidden")
+            Assert-True ($r.error -in 'alternate data stream denied by policy', 'path denied by policy') "${tool}: stream on Downloads denied"
+            $r = Invoke-Tool $tool @('-Path', (Join-Path $ok 'no-such.exe'))
+            Assert-Equal 'file not found' $r.error "${tool}: missing file still reported as not found"
+            if ($short -and $short -ne $dl) {
+                $r = Invoke-Tool $tool @('-Path', (Join-Path $short 'evil.exe'))
+                Assert-Equal 'path denied by policy' $r.error "${tool}: 8.3 short name of Downloads denied ($short)"
+            }
+            else { Write-Host "SKIP: 8.3 case - short names disabled on this volume" -ForegroundColor Yellow }
+            if ($haveSubst) {
+                $r = Invoke-Tool $tool @('-Path', "${substLetter}:\evil.exe")
+                Assert-Equal 'path denied by policy' $r.error "${tool}: subst drive onto Downloads denied"
+            }
+            else { Write-Host "SKIP: subst case - no free drive letter or subst failed" -ForegroundColor Yellow }
         }
     }
     finally {
-        foreach ($lnk in 'innocent', 'okjunction', 'share') {
+        if ($haveSubst) { $null = subst "${substLetter}:" /d }
+        foreach ($lnk in 'mid\inner') { try { [IO.Directory]::Delete((Join-Path $lroot $lnk)) } catch {} }
+        foreach ($lnk in 'innocent', 'okjunction', 'share', 'profj', 'chain', 'dotj', 'ja') {
             $lp = Join-Path $lroot $lnk
             # no Test-Path: it would follow the UNC link. Delete removes the
             # link itself, never its target.
