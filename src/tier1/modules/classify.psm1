@@ -9,6 +9,15 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'netutil.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'identity.psm1')
 
+function Test-HasDestination {
+    # entry names at least one destination criterion (else: constraint-only)
+    param([Parameter(Mandatory)] $Match)
+    foreach ($f in 'domains', 'domain_suffixes', 'cidrs') {
+        if ($Match.PSObject.Properties[$f] -and @($Match.$f).Count -gt 0) { return $true }
+    }
+    return $false
+}
+
 function Test-WhitelistMatch {
     # One whitelist entry vs one connection. Destination criteria (domains OR
     # domain_suffixes OR cidrs) are OR-ed; constraint criteria (processes,
@@ -39,11 +48,7 @@ function Test-WhitelistMatch {
     # 7680). Matches on its constraints alone, but ONLY when it pins both a
     # process and a port - the schema rejects anything broader. Previously
     # such an entry silently never matched (review finding).
-    $hasDest = $false
-    foreach ($f in 'domains', 'domain_suffixes', 'cidrs') {
-        if ($m.PSObject.Properties[$f] -and @($m.$f).Count -gt 0) { $hasDest = $true }
-    }
-    if (-not $hasDest) {
+    if (-not (Test-HasDestination -Match $m)) {
         $hasProc = $m.PSObject.Properties['processes'] -and @($m.processes).Count -gt 0
         $hasPort = ($m.PSObject.Properties['ports'] -and @($m.ports).Count -gt 0) -or
                    ($m.PSObject.Properties['local_ports'] -and @($m.local_ports).Count -gt 0)
@@ -91,14 +96,18 @@ function Get-Classification {
     $Conn.identity = Test-ProcessIdentity -Conn $Conn -Whitelist $Whitelist
     if ($Conn.identity -eq 'mismatch') { return 'residual' }
 
+    # 'unknown' (pinned name, unreadable image): name-only trust is kept for
+    # entries that also pin a destination, never for any-peer grants
+    $trusted = $Conn.identity -ne 'unknown'
     foreach ($entry in $Whitelist.entries) {
+        if (-not $trusted -and -not (Test-HasDestination -Match $entry.match)) { continue }
         if (Test-WhitelistMatch -Entry $entry -Conn $Conn) { return 'whitelisted' }
     }
 
     # browser policy: attributed browser traffic = clean-logged; raw-IP browser
     # traffic stays escalatable (GOAL: DoH churn is unwhitelistable but SNI/DNS
     # attribution must exist)
-    if ($Conn.name.ToLowerInvariant() -in @($Config.classify.browser_attributed_ok)) {
+    if ($trusted -and $Conn.name.ToLowerInvariant() -in @($Config.classify.browser_attributed_ok)) {
         if ($Conn.attribution_source -ne 'none' -and $Conn.domain) { return 'browser-attributed' }
     }
     return 'residual'

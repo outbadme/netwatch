@@ -197,6 +197,11 @@ try {
     $suspended = @(Test-OpenAlarmKeys -Config $cfg -Keys @('procd|203.0.113.10|443', 'other|1.1.1.1|443'))
     Assert-Equal 1 $suspended.Count 'only marker keys suspended'
     Assert-Equal 'procd|203.0.113.10|443' $suspended[0] 'marker key identified'
+    # a marker written before canonicalization still covers today's key
+    @{ reason = 'alarm'; keys = @('legacy|::ffff:203.0.113.30|443') } | ConvertTo-Json |
+        Set-Content (Join-Path $root 'alarms\20260827-000004-open.marker')
+    Assert-Equal 1 @(Test-OpenAlarmKeys -Config $cfg -Keys @('legacy|203.0.113.30|443')).Count 'legacy mapped-v6 marker key matches'
+    Remove-Item (Join-Path $root 'alarms\20260827-000004-open.marker')
 
     # --- F19 closing half: pending cleared once the marker is deleted --------
     Assert-True $queue3['procd|203.0.113.10|443'].pending 'precondition: key pending after alarm'

@@ -6,6 +6,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')   # ConvertTo-CanonicalKey
+
 $script:LastGoodWhitelist = $null
 
 function Expand-NetwatchPath {
@@ -159,7 +161,7 @@ function Get-SuppressionTable {
                 # happened to order after it
                 try {
                     if ([datetime]::Parse($obj[$k].expires_utc).ToUniversalTime() -gt $now) {
-                        $table[$k] = $obj[$k]
+                        $table[(ConvertTo-CanonicalKey -Key $k)] = $obj[$k]
                     }
                 }
                 catch {
@@ -182,7 +184,7 @@ function Add-Suppression {
     )
     $table = Get-SuppressionTable -Config $Config
     $now = [datetime]::UtcNow
-    $table[$Key] = @{
+    $table[(ConvertTo-CanonicalKey -Key $Key)] = @{
         added_utc   = $now.ToString('o')
         expires_utc = $now.AddHours($TtlHours).ToString('o')
     }
@@ -195,7 +197,7 @@ function Test-Suppressed {
         [Parameter(Mandatory)] $Config,
         [Parameter(Mandatory)] [string]$Key
     )
-    return (Get-SuppressionTable -Config $Config).ContainsKey($Key)
+    return (Get-SuppressionTable -Config $Config).ContainsKey((ConvertTo-CanonicalKey -Key $Key))
 }
 
 function Add-Proposal {
@@ -209,9 +211,10 @@ function Add-Proposal {
     )
     $file = Join-Path $Config.paths.state_root 'state\proposals.jsonl'
     $isRepeat = $false
+    $canonKey = ConvertTo-CanonicalKey -Key $Key
     if (Test-Path -LiteralPath $file) {
         foreach ($line in Get-Content -LiteralPath $file) {
-            try { if (($line | ConvertFrom-Json).key -eq $Key) { $isRepeat = $true; break } } catch {}
+            try { if ((ConvertTo-CanonicalKey -Key ([string]($line | ConvertFrom-Json).key)) -eq $canonKey) { $isRepeat = $true; break } } catch {}
         }
     }
     $record = [ordered]@{

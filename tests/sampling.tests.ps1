@@ -28,6 +28,15 @@ Assert-True $me.image_exists 'pwsh image exists'
 Assert-True ($me.image_path -like '*pwsh.exe') 'image path plausible'
 Assert-NotNull $me.command_line 'command line captured'
 
+# PID reuse: a cached entry whose start time differs from the live process
+# is a different process -> re-resolved; a matching one is served from cache
+$reuse = @{ $PID = @{ name = 'svchost'; image_path = 'C:\Windows\System32\svchost.exe'; command_line = ''
+                       created = [datetime]::new(2020, 1, 1, 0, 0, 0, [DateTimeKind]::Utc) } }
+Assert-Equal 'pwsh' (Resolve-ProcessInfo -ProcessId $PID -PidCache $reuse).name 'stale start time -> PID re-resolved'
+Assert-NotNull $reuse[$PID].created 'start time cached'
+$reuse[$PID].name = 'cached-marker'
+Assert-Equal 'cached-marker' (Resolve-ProcessInfo -ProcessId $PID -PidCache $reuse).name 'same start time -> cache hit'
+
 # dead pid resolves to unknown, not an exception
 $dead = Resolve-ProcessInfo -ProcessId 4000000 -PidCache $cache
 Assert-Equal 'unknown' $dead.name 'dead pid name unknown'

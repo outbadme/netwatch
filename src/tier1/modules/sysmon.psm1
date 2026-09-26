@@ -22,8 +22,10 @@ $script:ChannelName = 'Microsoft-Windows-Sysmon/Operational'
 $script:MaxEventsPerTick = 5000     # runaway guard; the rest is drained next tick
 
 function Test-SysmonAvailable {
-    # 'ok' when the channel exists, is enabled AND this process can read it
-    # (Sysmon's channel ACL can exclude non-elevated users); else 'unavailable'.
+    # 'ok' when the channel exists, is enabled, this process can read it
+    # (Sysmon's channel ACL can exclude non-elevated users) AND it holds at
+    # least one event 3 - a config without NetworkConnect rules leaves the
+    # channel alive but blind, which must not read as 'ok'.
     try {
         $cfg = [System.Diagnostics.Eventing.Reader.EventLogConfiguration]::new($script:ChannelName)
         if (-not $cfg.IsEnabled) { return 'unavailable' }
@@ -31,9 +33,10 @@ function Test-SysmonAvailable {
             $script:ChannelName, [System.Diagnostics.Eventing.Reader.PathType]::LogName, '*[System[EventID=3]]')
         $q.ReverseDirection = $true
         $r = [System.Diagnostics.Eventing.Reader.EventLogReader]::new($q)
-        try { $ev = $r.ReadEvent(); if ($ev) { $ev.Dispose() } }
+        $has3 = $false
+        try { $ev = $r.ReadEvent(); if ($ev) { $has3 = $true; $ev.Dispose() } }
         finally { $r.Dispose() }
-        return 'ok'
+        return $(if ($has3) { 'ok' } else { 'unavailable' })
     }
     catch { return 'unavailable' }
 }
@@ -49,6 +52,9 @@ function ConvertFrom-SysmonNetEventXml {
         if ($n) { $data[$n] = [string]$d.PSObject.Properties['#text']?.Value }
     }
     if ($data['Protocol'] -ne 'tcp') { return $null }
+    # direction decides which side is remote; guessing it would key the
+    # connection on this host's own address
+    if ($data['Initiated'] -notin 'true', 'false') { return $null }
     $initiated = $data['Initiated'] -eq 'true'
     $local  = if ($initiated) { 'Source' } else { 'Destination' }
     $remote = if ($initiated) { 'Destination' } else { 'Source' }
@@ -79,6 +85,19 @@ function ConvertFrom-SysmonNetEventXml {
     }
 }
 
+function Get-NewestRecordId {
+    $q = [System.Diagnostics.Eventing.Reader.EventLogQuery]::new(
+        $script:ChannelName, [System.Diagnostics.Eventing.Reader.PathType]::LogName, '*')
+    $q.ReverseDirection = $true
+    $r = [System.Diagnostics.Eventing.Reader.EventLogReader]::new($q)
+    try {
+        $ev = $r.ReadEvent()
+        if (-not $ev) { return [long]0 }
+        try { return [long]$ev.RecordId } finally { $ev.Dispose() }
+    }
+    finally { $r.Dispose() }
+}
+
 function Get-SysmonBookmark {
     param([Parameter(Mandatory)] $Config)
     $file = Join-Path $Config.paths.state_root 'state\sysmon-bookmark.xml'
@@ -104,17 +123,15 @@ function Read-SysmonConnections {
     $conns = [System.Collections.Generic.List[object]]::new()
     try {
         $last = Get-SysmonBookmark -Config $Config
+        $newest = Get-NewestRecordId
+        # record ids restart when the channel is cleared or Sysmon is
+        # reinstalled: a bookmark past the newest id would filter out every
+        # future event forever - restart at "now" instead
+        if ($null -ne $last -and $newest -lt $last) {
+            Write-OpLog -Config $Config -Level WARN -Message "sysmon record ids restarted (bookmark $last > newest $newest) - bookmark reset"
+            $last = $null
+        }
         if ($null -eq $last) {
-            $q = [System.Diagnostics.Eventing.Reader.EventLogQuery]::new(
-                $script:ChannelName, [System.Diagnostics.Eventing.Reader.PathType]::LogName, '*')
-            $q.ReverseDirection = $true
-            $r = [System.Diagnostics.Eventing.Reader.EventLogReader]::new($q)
-            try {
-                $ev = $r.ReadEvent()
-                $newest = if ($ev) { [long]$ev.RecordId } else { [long]0 }
-                if ($ev) { $ev.Dispose() }
-            }
-            finally { $r.Dispose() }
             Set-SysmonBookmark -Config $Config -RecordId $newest
             return @()
         }
@@ -153,17 +170,32 @@ function Merge-SysmonConnections {
     # Adds event-only connections (not in the live table any more - the
     # short-lived ones this source exists for) to the sample. Live-table
     # entries win: they carry the current state and the CIM command line.
+    # A matching event still corrects two fields of the live row: direction
+    # (Sysmon's Initiated flag is authoritative; the Listen-port heuristic
+    # misfires when a client socket reuses a listening port number) and the
+    # image path when CIM could not read it (the kernel-reported Image).
     param(
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Sample,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Events
     )
-    $seen = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($c in $Sample) { $null = $seen.Add("$($c.pid)|$($c.raddr)|$($c.rport)") }
+    $live = @{}
+    foreach ($c in $Sample) { $live["$($c.pid)|$($c.raddr)|$($c.rport)"] = $c }
+    $seen = [System.Collections.Generic.HashSet[string]]::new([string[]]@($live.Keys))
     $out = [System.Collections.Generic.List[object]]::new()
     foreach ($c in $Sample) { $out.Add($c) }
     foreach ($e in $Events) {
         $k = "$($e.pid)|$($e.raddr)|$($e.rport)"
-        if (-not $seen.Add($k)) { continue }                 # already live, or a repeat event
+        if ($live.ContainsKey($k)) {
+            $row = $live[$k]
+            $row.direction = $e.direction
+            if (-not $row.image_path -and $e.image_path) {
+                $row.image_path = $e.image_path
+                if ($row.name -eq 'unknown') { $row.name = $e.name }
+                $row.image_exists = Test-Path -LiteralPath $e.image_path -PathType Leaf
+            }
+            continue
+        }
+        if (-not $seen.Add($k)) { continue }                 # a repeat event
         $e.Remove('record_id')
         if ($e.image_path) { $e.image_exists = Test-Path -LiteralPath $e.image_path -PathType Leaf }
         $out.Add($e)

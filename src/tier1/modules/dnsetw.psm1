@@ -107,6 +107,25 @@ function Read-DnsEvents {
     $events = [System.Collections.Generic.List[object]]::new()
     try {
         $last = Get-DnsBookmark -Config $Config
+        # record ids restart when the channel is cleared: a bookmark past the
+        # newest id would filter out every future event forever
+        if ($last -gt 0) {
+            $nq = [System.Diagnostics.Eventing.Reader.EventLogQuery]::new(
+                $script:ChannelName, [System.Diagnostics.Eventing.Reader.PathType]::LogName, '*')
+            $nq.ReverseDirection = $true
+            $nr = [System.Diagnostics.Eventing.Reader.EventLogReader]::new($nq)
+            try {
+                $nev = $nr.ReadEvent()
+                $newest = if ($nev) { [long]$nev.RecordId } else { [long]0 }
+                if ($nev) { $nev.Dispose() }
+            }
+            finally { $nr.Dispose() }
+            if ($newest -lt $last) {
+                Write-OpLog -Config $Config -Level WARN -Message "dns etw record ids restarted (bookmark $last > newest $newest) - bookmark reset"
+                $last = [long]0
+                Set-DnsBookmark -Config $Config -RecordId 0
+            }
+        }
         $xpath = "*[System[(EventID=3006 or EventID=3008) and EventRecordID > $last]]"
         $query = [System.Diagnostics.Eventing.Reader.EventLogQuery]::new(
             $script:ChannelName,
