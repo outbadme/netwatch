@@ -1,7 +1,7 @@
 # check-process-lineage.ps1 - Tier-2 MCP tool backend. READ-ONLY. JSON stdout.
 # Walks pid -> parent -> ... via CIM Win32_Process (max depth 10, cycle guard).
 
-#Requires -Version 7
+#Requires -Version 7.4
 param([Parameter(Mandatory)] [int]$ProcessId)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

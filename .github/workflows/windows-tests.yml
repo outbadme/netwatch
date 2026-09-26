@@ -32,11 +32,15 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      # Node 24 = current LTS (Node 20 reached end of life 2026-04-30); the
+      # npm cache is keyed on the MCP server lockfile
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/tier2/mcp-server/package-lock.json
 
       # tier2.claude_exe 'auto' resolves claude via PATH (README requirement);
       # the suite never calls it live - Tier 2 runs against tests/stubs
@@ -47,6 +51,11 @@ jobs:
       - name: MCP server dependencies
         shell: pwsh
         run: npm ci --prefix src/tier2/mcp-server
+
+      # versions on record for every run, checked against the documented minimums
+      - name: Environment versions
+        shell: pwsh
+        run: pwsh -NoProfile -File install/probe-environment.ps1
 
       - name: Test suite
         shell: pwsh

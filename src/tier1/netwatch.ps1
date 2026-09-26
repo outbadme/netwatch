@@ -4,7 +4,7 @@
 # Test hooks: -NoMutex, -MaxTicks, -TickDelaySec (prod default = config
 # sample_interval_sec), -ConfigPath.
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\netwatch.config.json'),
     [switch]$Once,

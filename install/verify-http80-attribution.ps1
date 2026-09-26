@@ -7,7 +7,7 @@
 # Exit 0 = attribution proven; 2 = pipeline ran but no http-host evidence
 # (report honestly, do not claim success); 1 = setup failure.
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [string]$ControlHost = 'yr1.c.lencr.org',
     [string]$ControlPath = '/55.crl',

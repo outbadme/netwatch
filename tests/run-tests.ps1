@@ -3,7 +3,7 @@
 # Usage: pwsh -NoProfile -File tests/run-tests.ps1 [-Filter <wildcard>]
 # Exit 0 = all green; 1 = any failure.
 
-#Requires -Version 7
+#Requires -Version 7.4
 param([string]$Filter = '*')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

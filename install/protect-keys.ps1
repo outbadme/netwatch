@@ -3,7 +3,7 @@
 # state\apikeys.dat consumed by invoke-tier2.ps1. CurrentUser scope: only
 # this Windows account can decrypt. Offers to delete the plaintext source.
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [Parameter(Mandatory)] [string]$EnvFile,
     [string]$StateRoot = [Environment]::ExpandEnvironmentVariables('%LOCALAPPDATA%\netwatch'),

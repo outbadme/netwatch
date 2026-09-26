@@ -4,7 +4,7 @@
 # Usage: pwsh -File send-toast.ps1 -Title 'netwatch' -Message '...' [-Urgent]
 # Exit 0 = toast shown, 1 = toast failed (caller logs and continues).
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [Parameter(Mandatory)] [string]$Title,
     [Parameter(Mandatory)] [string]$Message,

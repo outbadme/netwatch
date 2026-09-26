@@ -2,7 +2,7 @@
 # dnsetw.psm1 reads (GOAL: events 3006/3008 for domain+PID attribution).
 # OPERATOR-RUN ONLY, requires admin. 64 MB ring per GOAL.
 
-#Requires -Version 7
+#Requires -Version 7.4
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

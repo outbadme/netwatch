@@ -10,7 +10,7 @@
 #      (optional quota overrides; defaults 400 / 4 / 900),
 #      NETWATCH_LEDGER_WAIT_MS (ledger lock wait, default 5000; test seam).
 
-#Requires -Version 7
+#Requires -Version 7.4
 param([Parameter(Mandatory)] [string]$Ip)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

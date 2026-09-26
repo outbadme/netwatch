@@ -16,7 +16,7 @@
 # task runs non-elevated and Test-SysmonAvailable reports 'unavailable',
 # add that user to Event Log Readers (then sign out/in).
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [string]$SysmonExe,
     [switch]$KeepExistingConfig

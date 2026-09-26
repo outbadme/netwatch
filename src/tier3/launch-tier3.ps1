@@ -2,7 +2,7 @@
 # Called by Tier 1 (escalate.psm1) on ALARM / tier2_timeout / tier2_failed.
 # All paths come from arguments - nothing hardcoded here.
 
-#Requires -Version 7
+#Requires -Version 7.4
 param(
     [string]$SessionId,                       # from Tier-2 JSON envelope; may be empty
     [Parameter(Mandatory)] [string]$Reason,   # alarm | tier2_timeout | tier2_failed
