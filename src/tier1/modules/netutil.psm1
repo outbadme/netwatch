@@ -70,7 +70,8 @@ function Get-EmbeddedIPv4 {
     if ($addr.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetworkV6) { return $null }
     $b = $addr.GetAddressBytes()
     $offset = -1
-    if ((Test-IpInCidr -Ip $Ip -Cidr '64:ff9b::/96') -or (Test-IpInCidr -Ip $Ip -Cidr '::/96')) { $offset = 12 }
+    if ((Test-IpInCidr -Ip $Ip -Cidr '64:ff9b::/96') -or (Test-IpInCidr -Ip $Ip -Cidr '::/96') -or
+        (Test-IpInCidr -Ip $Ip -Cidr '::ffff:0:0:0/96')) { $offset = 12 }   # last: SIIT IPv4-translated (RFC 2765)
     elseif (Test-IpInCidr -Ip $Ip -Cidr '2002::/16') { $offset = 2 }
     if ($offset -lt 0) { return $null }
     return [System.Net.IPAddress]::new([byte[]]$b[$offset..($offset + 3)]).ToString()
@@ -96,6 +97,10 @@ function Test-NonRoutableIp {
         if ($Ip -eq '::')                           { return 'reserved' }
         # Teredo embeds the client's (obfuscated) public IPv4 - never send it
         if (Test-IpInCidr -Ip $Ip -Cidr '2001::/32') { return 'tunnel' }
+        # RFC 8215 local-use NAT64: the IPv4's position depends on the
+        # operator's prefix length (RFC 6052), so it cannot be extracted and
+        # checked reliably - never looked up (fail closed)
+        if (Test-IpInCidr -Ip $Ip -Cidr '64:ff9b:1::/48') { return 'tunnel' }
         # NB: the IPv4 embedded in NAT64/6to4 addresses is deliberately NOT
         # judged here - classify.psm1 maps 'loopback'/'link-local' to
         # local-noise, and 2002:7f00:1::1 is a real routable destination that

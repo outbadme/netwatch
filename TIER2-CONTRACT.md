@@ -67,12 +67,15 @@ any write/modify/delete operation (none exist in the scripts at all).
   refuses (returns `{ "refused": "<reason>" }`, not an error) — own public
   IP (reads `state/ownip.json`: detected + last-known + recorded static
   `203.0.113.10`), RFC1918, 100.64.0.0/10, loopback, link-local,
-  multicast/reserved, IPv6 unspecified, Teredo (`2001::/32`). This guard is
+  multicast/reserved, IPv6 unspecified, Teredo (`2001::/32`), local-use
+  NAT64 (`64:ff9b:1::/48` - IPv4 position depends on the operator's prefix
+  length, so it is refused rather than guessed). This guard is
   not model-overridable. The input is canonicalized FIRST (IPv4-mapped IPv6
   -> IPv4, decimal/hex/short IPv4 spellings -> dotted quad, IPv6 scope id
   dropped) and only the canonical form is compared and put in the lookup
   URL; the IPv4 embedded in NAT64 `64:ff9b::/96`, IPv4-compatible `::/96`
-  and 6to4 `2002::/16` addresses is guarded the same way.
+  SIIT IPv4-translated `::ffff:0:0:0/96` and 6to4 `2002::/16` addresses is
+  guarded the same way.
 - Action: AbuseIPDB check + VirusTotal ip-address lookup, through the
   quota ledger `state/repquota.json` (VT budget: <= 400/day and 4/min kept
   under the ~500/day free tier; AbuseIPDB analogous). Quota is reserved

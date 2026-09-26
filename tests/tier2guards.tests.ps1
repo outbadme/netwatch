@@ -47,6 +47,9 @@ try {
                 @{ ip = '::ffff:5.6.7.8';       want = 'own public ip' }  # detected, from state
                 @{ ip = '84281096';             want = 'own public ip' }  # decimal 5.6.7.8
                 @{ ip = '2001:0:4136:e378::1';  want = 'tunnel' }         # Teredo
+                @{ ip = '::ffff:0:cb00:710a';   want = 'own public ip' }  # SIIT own static
+                @{ ip = '::ffff:0:a00:1';       want = 'rfc1918' }        # SIIT private
+                @{ ip = '64:ff9b:1::cb00:710a'; want = 'tunnel' }         # local-use NAT64
                 @{ ip = '::';                   want = 'reserved' }
             )) {
             $r = Invoke-Tool 'check-reputation.ps1' @('-Ip', $case.ip)

@@ -68,6 +68,10 @@ Assert-Null  (ConvertTo-CanonicalIp -Ip 'nope')                               'g
 Assert-Equal '10.0.0.1'      (Get-EmbeddedIPv4 -Ip '64:ff9b::a00:1')         'NAT64 embedded'
 Assert-Equal '192.168.1.1'   (Get-EmbeddedIPv4 -Ip '2002:c0a8:101::')        '6to4 embedded'
 Assert-Null  (Get-EmbeddedIPv4 -Ip '2606:4700::1111')                         'plain v6 embeds nothing'
+Assert-Equal '10.0.0.1'      (Get-EmbeddedIPv4 -Ip '::ffff:0:a00:1')         'SIIT embedded'
+Assert-Equal 'tunnel'        (Test-NonRoutableIp -Ip '64:ff9b:1::a00:1')     'local-use NAT64 never looked up'
+Assert-Equal 'tunnel'        (Test-NonRoutableIp -Ip '64:ff9b:1:ff::1')      'local-use NAT64 whole /48'
+Assert-Null  (Test-NonRoutableIp -Ip '64:ff9b:2::1')                          'just outside local-use /48'
 Assert-Null  (Get-EmbeddedIPv4 -Ip '8.8.8.8')                                 'v4 embeds nothing'
 
 # --- ConvertTo-CymruName ---

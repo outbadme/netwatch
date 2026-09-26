@@ -55,6 +55,7 @@ function Get-RefuseReason([System.Net.IPAddress]$A) {
         if (Test-InCidr $A 'fc00::/7')            { return 'ula' }
         if ($A.Equals([System.Net.IPAddress]::IPv6Any)) { return 'reserved' }
         if (Test-InCidr $A '2001::/32')           { return 'tunnel' }   # Teredo embeds client IPv4
+        if (Test-InCidr $A '64:ff9b:1::/48')      { return 'tunnel' }   # local-use NAT64: v4 position unknowable
         return $null
     }
     if (Test-InCidr $A '169.254.0.0/16')          { return 'link-local' }
@@ -69,13 +70,15 @@ function Get-RefuseReason([System.Net.IPAddress]$A) {
 }
 
 # IPv4 carried inside an IPv6 transition address (NAT64 64:ff9b::/96,
-# IPv4-compatible ::/96, 6to4 2002::/16) is judged like the address itself:
+# IPv4-compatible ::/96, SIIT ::ffff:0:0:0/96, 6to4 2002::/16) is judged like
+# the address itself:
 # 64:ff9b::<own ip> must not leak the own IP.
 $embedded = $null
 if ($addr.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetworkV6) {
     $b = $addr.GetAddressBytes()
     $off = -1
-    if ((Test-InCidr $addr '64:ff9b::/96') -or (Test-InCidr $addr '::/96')) { $off = 12 }
+    if ((Test-InCidr $addr '64:ff9b::/96') -or (Test-InCidr $addr '::/96') -or
+        (Test-InCidr $addr '::ffff:0:0:0/96')) { $off = 12 }                 # last: SIIT
     elseif (Test-InCidr $addr '2002::/16') { $off = 2 }
     if ($off -ge 0) { $embedded = [System.Net.IPAddress]::new([byte[]]$b[$off..($off + 3)]) }
 }

@@ -75,6 +75,9 @@ try {
     Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '2002:c0a8:101::1' -Exclusions $ex) '6to4-embedded private excluded'
     Assert-Equal 'loopback' (Test-ExcludedFromLookup -Ip '2002:7f00:1::1' -Exclusions $ex) '6to4-embedded loopback excluded'
     Assert-Null (Test-ExcludedFromLookup -Ip '64:ff9b::808:808' -Exclusions $ex) 'NAT64-embedded public allowed'
+    Assert-Equal 'own public ip' (Test-ExcludedFromLookup -Ip '::ffff:0:cb00:710a' -Exclusions $ex) 'SIIT-embedded own static excluded'
+    Assert-Equal 'rfc1918' (Test-ExcludedFromLookup -Ip '::ffff:0:a00:1' -Exclusions $ex) 'SIIT-embedded private excluded'
+    Assert-Equal 'tunnel' (Test-ExcludedFromLookup -Ip '64:ff9b:1::cb00:710a' -Exclusions $ex) 'local-use NAT64 excluded'
     Assert-Equal 'invalid' (Test-ExcludedFromLookup -Ip 'garbage' -Exclusions $ex) 'garbage never looked up'
 
     # --- Cymru parse with canned resolver ------------------------------------
