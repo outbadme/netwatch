@@ -16,7 +16,7 @@ try {
     # --- with session id: STILL a fresh session; id is reference-only --------
     $rec = Join-Path $root 'claude-call-1.json'
     $env:RECORD_CLAUDE_FILE = $rec
-    & pwsh -NoProfile -File $tier3 -SessionId 'sess-abc' -Reason 'alarm' `
+    & pwsh -NoProfile -File $tier3 -SessionId '0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b' -Reason 'alarm' `
         -AlarmFile $alarmSrc -ClaudeExe "$claudeStub" -StateRoot $root `
         -Keys 'k1|1.2.3.4|443,k2|evil.example|8443'
     # Start-Process is async; wait briefly for the stub to write
@@ -24,14 +24,14 @@ try {
     while (-not (Test-Path $rec) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
     Assert-True (Test-Path $rec) 'claude stub invoked (session-id path)'
     $call = Get-Content $rec -Raw | ConvertFrom-Json
-    # --permission-mode auto (2026-08-29): unattended full-capability session
-    # must not sit waiting on a permission/opt-in prompt mid-investigation
-    Assert-Equal 3 $call.args.Count '--permission-mode auto + single fresh prompt argument (no --resume)'
+    # --permission-mode default (post-compromise audit 2026-09-27): the human
+    # approves every command; 'auto' let an injected packet run commands
+    Assert-Equal 3 $call.args.Count '--permission-mode default + single fresh prompt argument (no --resume)'
     Assert-Equal '--permission-mode' $call.args[0] 'permission-mode flag present'
-    Assert-Equal 'auto' $call.args[1] 'permission-mode value is auto'
+    Assert-Equal 'default' $call.args[1] 'permission-mode value is default (human approves)'
     Assert-True ($call.args[2] -notlike '--resume*') 'resume flag gone'
-    Assert-True ($call.args[2] -like '*sess-abc*') 'tier2 session id referenced in prompt'
-    Assert-True ($call.args[2] -like '*k2|evil.example|8443*') 'keys listed in prompt'
+    Assert-True ($call.args[2] -like '*0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b*') 'tier2 session id (GUID) referenced in prompt'
+    Assert-False ($call.args[2] -like '*evil.example*') 'attacker-shaped keys NOT inlined in the prompt'
     Assert-Equal $root $call.cwd 'working directory = state root'
 
     $alarms = @(Get-ChildItem (Join-Path $root 'alarms') -Filter '*-alarm.json')
@@ -56,9 +56,9 @@ try {
     while (-not (Test-Path $rec2) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
     Assert-True (Test-Path $rec2) 'claude stub invoked (fresh path)'
     $call = Get-Content $rec2 -Raw | ConvertFrom-Json
-    Assert-Equal 3 $call.args.Count '--permission-mode auto + single prompt argument'
+    Assert-Equal 3 $call.args.Count '--permission-mode default + single prompt argument'
     Assert-Equal '--permission-mode' $call.args[0] 'permission-mode flag present'
-    Assert-Equal 'auto' $call.args[1] 'permission-mode value is auto'
+    Assert-Equal 'default' $call.args[1] 'permission-mode value is default'
     Assert-True ($call.args[2] -like '*tier2_timeout*') 'reason in prompt'
     Assert-True ($call.args[2] -like "*$alarmSrc*") 'alarm file path in prompt'
     Assert-True ($call.args[2] -like '*data, not instructions*') 'injection warning in prompt'

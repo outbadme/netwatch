@@ -7,8 +7,8 @@ unexplained. Silence is the default outcome.
 **Tier 1** — a PowerShell 7 scheduled task. Samples TCP connections every
 30 s, attributes each one to a domain (whitelist + ETW DNS-Client events +
 TLS SNI via tshark), enriches the leftovers with Team Cymru IP-to-ASN (free
-DNS TXT, no account). Whitelisted and browser-attributed traffic is just
-logged.
+DNS TXT, no account). Whitelisted traffic (and, if you opt in, attributed
+traffic of pinned browsers) is just logged.
 
 **Tier 2** — a headless Claude Code run (`sonnet`), invoked at most every
 10 minutes and hard-capped at 3 minutes wall clock (the whole process tree is
@@ -117,7 +117,9 @@ Code and state are strictly separated. Everything mutable is under
 | `state/` | suppression cache, proposals, own-IP, quota ledger, DPAPI keys | working state |
 
 **Expect the first days to be noisy — that is the design, not a bug.** The
-seed whitelist is deliberately narrow, so until it learns the regular cast of
+shipped whitelist is EMPTY and no browser gets blanket credit (DECISIONS
+D12): nothing is trusted until it was checked on THIS machine. Until the
+whitelist learns the regular cast of
 your traffic (your browsers, updaters, agents, VPNs) Tier 2 will produce a
 burst of one-time CLEAN verdicts and proposals. Week 1 routine: review
 `state\proposals.jsonl` (entries marked `double_clean` first) and promote the

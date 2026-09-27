@@ -239,9 +239,11 @@ On ALARM / timeout / double failure, Tier 1 calls
 `tier3/launch-tier3.ps1 -SessionId <id-or-empty> -AlarmFile <path>`:
 urgent toast, then a visible pwsh 7 console window hosting a FRESH
 interactive `claude` session whose prompt is fully constructed each time
-(reason, keys, packet path, verdict path when present, and the Tier-2
-session id as reference only — DECISIONS D7 as amended 2026-08-27; the
-drifted headless context is never resumed automatically, though the human
-may still run `claude --resume <id>` manually). Tier 3 is a
-full-capability interactive session; the human is the permission system
-from here on.
+from netwatch-controlled values only (reason, packet path, verdict path
+when present, and the Tier-2 session id - GUID-shaped only - as reference;
+connection keys stay inside the packet file, never in the prompt -
+DECISIONS D7 as amended, D12). The drifted headless context is never
+resumed automatically, though the human may still run `claude --resume
+<id>` manually. The session runs with `--permission-mode default`: it opens
+on its own from a packet the monitored side can shape, so the human
+approves every command it runs.

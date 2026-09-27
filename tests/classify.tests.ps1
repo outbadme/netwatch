@@ -60,11 +60,11 @@ try {
     # attribution via microsoft-system) ---------------------------------------
     $ob = $wl.entries | Where-Object id -eq 'octo-browser'
     Assert-NotNull $ob 'octo-browser seed entry present'
-    $c = New-Conn @{ name = 'octium'; domain = 'legalize.cc'; attribution_source = 'sni' }
-    Assert-True (Test-WhitelistMatch -Entry $ob -Conn $c) 'octium to legalize.cc matches'
+    $c = New-Conn @{ name = 'octium'; domain = 'example-dest.test'; attribution_source = 'sni' }
+    Assert-True (Test-WhitelistMatch -Entry $ob -Conn $c) 'octium to example-dest.test matches'
     $c = New-Conn @{ name = 'octo browser'; domain = 'app.octobrowser.net'; attribution_source = 'dns-pid' }
     Assert-True (Test-WhitelistMatch -Entry $ob -Conn $c) 'octo browser to octobrowser.net suffix matches'
-    $c = New-Conn @{ name = 'chrome'; domain = 'legalize.cc'; attribution_source = 'sni' }
+    $c = New-Conn @{ name = 'chrome'; domain = 'example-dest.test'; attribution_source = 'sni' }
     Assert-False (Test-WhitelistMatch -Entry $ob -Conn $c) 'process constraint holds'
     Assert-Null ($wl.entries | Where-Object id -eq 'mpdefendercoreservice-defender-cloud') 'defender-cloud /32 entry removed from seed'
 

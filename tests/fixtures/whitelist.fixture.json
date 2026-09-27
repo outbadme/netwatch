@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "tailscale",
+      "match": {
+        "domain_suffixes": [
+          "tailscale.com",
+          "tailscale.io"
+        ],
+        "processes": [
+          "tailscaled",
+          "tailscale-ipn"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "anthropic-claude-cli",
+      "match": {
+        "domain_suffixes": [
+          "anthropic.com",
+          "claude.ai",
+          "claude.com"
+        ],
+        "processes": [
+          "claude",
+          "node"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "microsoft-system",
+      "match": {
+        "domain_suffixes": [
+          "microsoft.com",
+          "windowsupdate.com",
+          "windows.com",
+          "msedge.net",
+          "azureedge.net",
+          "azurefd.net",
+          "office.com",
+          "office.net",
+          "live.com",
+          "bing.com",
+          "msn.com",
+          "trafficmanager.net",
+          "akamaized.net",
+          "msftconnecttest.com",
+          "data.microsoft.com"
+        ],
+        "processes": [
+          "svchost",
+          "explorer",
+          "msmpeng",
+          "mpdefendercoreservice",
+          "backgroundtaskhost",
+          "systemsettings",
+          "microsoftstartfeedprovider",
+          "sdxhelper",
+          "officeclicktorun",
+          "startmenuexperiencehost",
+          "textinputhost",
+          "taskhostw",
+          "dosvc",
+          "searchhost",
+          "runtimebroker"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "microsoft-system-observed-cidrs",
+      "match": {
+        "cidrs": [
+          "4.208.0.0/16",
+          "150.171.0.0/16",
+          "2.21.173.0/24"
+        ],
+        "processes": [
+          "svchost",
+          "msmpeng",
+          "mpdefendercoreservice",
+          "dosvc",
+          "backgroundtaskhost",
+          "taskhostw"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "windows365-rdp-gateway-ip",
+      "match": {
+        "cidrs": [
+          "198.51.100.13/32"
+        ],
+        "ports": [
+          3395
+        ],
+        "processes": [
+          "msrdc",
+          "windows365"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "telegram",
+      "match": {
+        "domain_suffixes": [
+          "telegram.org",
+          "t.me"
+        ],
+        "cidrs": [
+          "149.154.160.0/20"
+        ],
+        "processes": [
+          "telegram"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "tailscale-inbound-rdp-own-iphone",
+      "match": {
+        "cidrs": [
+          "100.64.0.21/32"
+        ],
+        "local_ports": [
+          3389
+        ],
+        "processes": [
+          "svchost"
+        ],
+        "direction": "inbound"
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "octo-browser",
+      "match": {
+        "domain_suffixes": [
+          "octobrowser.net"
+        ],
+        "domains": [
+          "example-dest.test"
+        ],
+        "processes": [
+          "octium",
+          "octo browser"
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "svchost-delivery-optimization-peer",
+      "match": {
+        "processes": [
+          "svchost"
+        ],
+        "ports": [
+          7680
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "svchost-delivery-optimization-peer-inbound",
+      "match": {
+        "processes": [
+          "svchost"
+        ],
+        "local_ports": [
+          7680
+        ],
+        "direction": "inbound"
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    },
+    {
+      "id": "dosvc-mcc-content-dl-delivery",
+      "match": {
+        "domain_suffixes": [
+          "dl.delivery.mp.microsoft.com"
+        ],
+        "processes": [
+          "svchost",
+          "dosvc"
+        ],
+        "ports": [
+          80
+        ]
+      },
+      "added_by": "seed",
+      "added_at": "2026-01-01T00:00:00Z",
+      "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
+    }
+  ]
+}

@@ -8,7 +8,7 @@ TIER2-CONTRACT.md, FAILURE-MATRIX.md.
 - **Tier 1** (pwsh 7, logon scheduled task, mutex-guarded): 30-s TCP
   sampling; domain attribution = ETW DNS-Client (bookmarked 3006/3008) +
   tshark SNI (443/8443, supervised with backoff); domain-based whitelist
-  with CIDR fallback; browser policy (attributed msedge/webview2 traffic =
+  with CIDR fallback; browser policy (opt-in since D12; attributed traffic of listed browsers =
   clean-log, raw-IP browser traffic stays escalatable); Cymru ASN on
   residual only; own-IP exclusion fail-closed (detected + last-known +
   recorded 203.0.113.10).
@@ -58,8 +58,8 @@ TIER2-CONTRACT.md, FAILURE-MATRIX.md.
 3. Inbound-direction detection from Get-NetTCPConnection needs the
    Listen-table heuristic implemented carefully (false "inbound" would
    spam immediate escalations).
-4. MS whitelist seeds are deliberately narrow (no broad Azure CIDRs) —
-   expect a burst of one-time Tier-2 CLEANs in week 1 that a human should
-   convert into whitelist entries from proposals.jsonl.
+4. The shipped whitelist is empty (DECISIONS D12) — expect a burst of
+   one-time Tier-2 verdicts in week 1 that a human should convert into
+   whitelist entries from proposals.jsonl, checking each on this machine.
 5. tshark sees only configured ports (443/8443) — TLS on odd ports rides
    on DNS attribution or escalates unattributed (accepted limitation).

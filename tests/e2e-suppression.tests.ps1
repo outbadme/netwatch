@@ -20,7 +20,7 @@ try {
         $escDir = Join-Path $root 'escalations'
         $run1Packets = @(Get-ChildItem $escDir -Filter '*-packet.json' -ErrorAction SilentlyContinue)
         if ($run1Packets.Count -eq 0) {
-            Write-Host 'WARNING: run 1 produced no residuals - suppression e2e NOT EXERCISED this run.'
+            Skip-Test 'run 1 produced no residuals (no live connections here) - suppression e2e not exercised'
             Complete-Tests
         }
         $run1Keys = @($run1Packets | ForEach-Object {

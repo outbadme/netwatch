@@ -7,7 +7,7 @@ Import-Module "$PSScriptRoot\..\src\tier1\modules\state.psm1" -Force
 $root = New-TestStateRoot
 try {
     # --- config load ---------------------------------------------------------
-    $cfgPath = New-TestConfig -StateRoot $root
+    $cfgPath = New-TestConfig -StateRoot $root -NoFixture   # this file tests the seeding itself
     $cfg = Get-NetwatchConfig -Path $cfgPath
     Assert-Equal $root $cfg.paths.state_root 'state_root passthrough'
     Assert-True (Test-Path $cfg.tier2.claude_exe) "claude 'auto' resolved to a real file: $($cfg.tier2.claude_exe)"
@@ -18,14 +18,14 @@ try {
     $base = [Environment]::ExpandEnvironmentVariables('%LOCALAPPDATA%\netwatch')
     $percentRoot = $root.Replace($base, '%LOCALAPPDATA%\netwatch')
     Assert-True ($percentRoot.Contains('%')) 'precondition: percent-form built'
-    $cfgPath2 = New-TestConfig -StateRoot $root -Override @{
+    $cfgPath2 = New-TestConfig -StateRoot $root -NoFixture -Override @{
         paths = @{ state_root = $percentRoot }
     }
     $cfg2 = Get-NetwatchConfig -Path $cfgPath2
     Assert-Equal $root $cfg2.paths.state_root 'percent vars expanded to real path'
 
     # schema-invalid config throws (unknown top-level key)
-    $badPath = New-TestConfig -StateRoot $root -Override @{ bogus_key = 1 }
+    $badPath = New-TestConfig -StateRoot $root -NoFixture -Override @{ bogus_key = 1 }
     Assert-Throws { Get-NetwatchConfig -Path $badPath } 'unknown key rejected by schema'
 
     # --- state root init -----------------------------------------------------
@@ -37,8 +37,14 @@ try {
     # --- whitelist: seed on first load --------------------------------------
     $wl = Get-Whitelist -Config $cfg
     Assert-True (Test-Path $cfg.paths.whitelist) 'whitelist seeded into state root'
-    Assert-True ($wl.entries.Count -ge 5) 'seed entries loaded'
+    # the shipped seed is EMPTY (post-compromise reset 2026-09-27): every
+    # entry is earned on the machine through Tier-2/3 proposals + a human
+    Assert-Equal 0 @($wl.entries).Count 'shipped seed has no entries'
     Assert-Null ($wl.PSObject.Properties['load_error']?.Value) 'no load_error on good load'
+    # last-good behaviour below needs content: load the test fixture
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'fixtures\whitelist.fixture.json') -Destination $cfg.paths.whitelist -Force
+    $wl = Get-Whitelist -Config $cfg
+    Assert-True ($wl.entries.Count -ge 5) 'fixture entries loaded'
 
     # --- whitelist: corrupt file keeps last-good (F20) -----------------------
     Set-Content -LiteralPath $cfg.paths.whitelist -Value '{ not json !!!'

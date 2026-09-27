@@ -243,3 +243,39 @@ whitelisting an entire third-party hosting block for svchost:80, however
 narrow the process pin, permanently over-permits against a rotating
 assignment; the journal-based attribution is evidence, the whitelist
 would be faith.
+
+## D12 — Post-compromise reset: no inherited trust (2026-09-27)
+
+Context: the machine netwatch was built and tuned on was running a RAT
+(created local users and privileges; used npm packages, WinSxS
+substitution and msedgewebview2). Every trust decision made from that
+machine's observations is therefore unverified.
+
+Decisions:
+- Seed whitelist shipped EMPTY. The former entries (Microsoft suffixes incl.
+  customer-hostable CDNs, observed CIDRs, any-peer svchost:7680, inbound RDP
+  from a tailnet peer, Telegram by name, node to LLM APIs, Octo Browser,
+  bank CA endpoints, CRL hosts, caBLE) were derived there; they survive only
+  as SYNTHETIC test data in `tests/fixtures/whitelist.fixture.json`.
+- `browser_attributed_ok` defaults to empty: a listed name trusts any
+  domain it reaches. `msedgewebview2` must never be listed - any program
+  (the RAT included) can embed the genuine, Microsoft-signed runtime.
+- Tier-2 prompt: the owner profile ("pentester workstation", "cheap VPS /
+  reputation are weak signals because the owner's C2 looks like that",
+  "exploit tooling is the normal toolset") is removed - it described the
+  RAT's own traffic profile as normal. Reputation, hosting ASNs and missing
+  attribution are real signals; `mismatch` is always suspicious; unsigned
+  binaries are always hashed; runtimes (WebView2, node, script hosts) are
+  judged by their host process; `do-log` is a local, forgeable claim.
+- Tier 3 runs with `--permission-mode default` (was `auto`, 2026-08-29): an
+  automatically opened agent, prompted from attacker-shapeable data, must
+  not execute commands without the human approving each one. Connection
+  keys are no longer inlined in its prompt.
+- `install/verify-packages.ps1` fails (exit 1) unless size, hash AND a
+  Valid Authenticode signature all pass.
+
+Known limit, not fixed here: identity pins check the executable's path and
+signer, not the DLLs it loads - side-loading (WinSxS or a planted DLL next
+to a signed binary) and injection into a legitimate process are invisible
+to Tier 1.
+

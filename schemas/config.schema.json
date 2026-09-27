@@ -44,9 +44,9 @@
       "type": "object", "additionalProperties": false,
       "properties": {
         "browser_attributed_ok": {
-          "description": "browser processes: any connection WITH domain attribution (sni/dns) is logged as clean (user-driven browsing churn, unwhitelistable domain set); connections WITHOUT attribution (raw-IP) stay escalatable",
+          "description": "OPT-IN browser processes: any connection WITH domain attribution (sni/dns) is logged as clean without Tier 2; raw-IP connections stay escalatable. Empty by default (post-compromise reset 2026-09-27): a listed name trusts ANY domain it reaches, so list only pinned browsers (identity.psm1) and never embeddable runtimes such as msedgewebview2.",
           "type": "array", "items": { "type": "string" },
-          "default": ["msedge", "msedgewebview2", "octium", "octo browser"]
+          "default": []
         },
         "machine_notes": {
           "description": "static context strings copied verbatim into every escalation packet",

@@ -6,9 +6,13 @@ $script:RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 function New-TestConfig {
     # Returns the path of a config json written into $StateRoot\config.json.
     # $Override: hashtable of top-level keys merged over the defaults below.
+    # The shipped seed whitelist is EMPTY (post-compromise reset 2026-09-27);
+    # tests get tests/fixtures/whitelist.fixture.json as the live whitelist
+    # unless -NoFixture (tests of the seeding itself).
     param(
         [Parameter(Mandatory)] [string]$StateRoot,
-        [hashtable]$Override = @{}
+        [hashtable]$Override = @{},
+        [switch]$NoFixture
     )
     $cfg = @{
         sample_interval_sec = 30
@@ -24,7 +28,7 @@ function New-TestConfig {
         }
         suppression_ttl_hours = 24
         classify = @{
-            browser_attributed_ok = @('msedge', 'msedgewebview2', 'octium', 'octo browser')
+            browser_attributed_ok = @('msedge', 'octium', 'octo browser')   # test data for the mechanism; ships empty
             machine_notes         = @('test machine note')
         }
         sni = @{
@@ -57,5 +61,9 @@ function New-TestConfig {
     }
     $path = Join-Path $StateRoot 'config.json'
     $cfg | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $path -Encoding utf8
+    $wl = $cfg.paths.whitelist
+    if (-not $NoFixture -and -not (Test-Path -LiteralPath $wl)) {
+        Copy-Item -LiteralPath (Join-Path $script:RepoRoot 'tests\fixtures\whitelist.fixture.json') -Destination $wl
+    }
     return $path
 }

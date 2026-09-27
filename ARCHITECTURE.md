@@ -154,7 +154,8 @@ startup; if held, exit immediately.
    CIDR entries, optional process/port/direction constraints — see
    `schemas/whitelist.schema.json`). Matched -> one line in
    `conn-*.jsonl`, nothing else. Browser policy (config
-   `classify.browser_attributed_ok`, default msedge/msedgewebview2): any
+   `classify.browser_attributed_ok`, EMPTY by default - opt-in, DECISIONS
+   D12; never for embeddable runtimes such as msedgewebview2): any
    browser connection WITH domain attribution is treated as clean-logged
    (user-driven browsing churn — an unwhitelistable domain set), while
    browser connections WITHOUT attribution (raw-IP, no SNI, no DNS) stay
@@ -169,9 +170,7 @@ startup; if held, exit immediately.
    flow means "inside the tunnel", never stealth. Consequence: the proxy
    process's remote addresses rotate constantly, so `/32` whitelist
    entries are meaningless for it; the correct form is process + provider
-   domain suffix (the `octo-browser` seed entry), with the
-   `browser_attributed_ok` mechanism covering the rest (attributed =
-   clean-logged, unattributed = escalatable).
+   domain suffix, added by the operator after checking it on the machine.
 6. **Residual handling**: unmatched connections enter the residual queue
    keyed by `(procname, domain-or-raddr, rport)`. Debounce (see
    DECISIONS D2): a key becomes *escalatable* when it has been seen in >= 2
@@ -237,8 +236,10 @@ Exact command line, tool restriction flags, and MCP config: see
 - Tool surface = exactly four read-only MCP tools served by a local Node
   stdio MCP server; every built-in tool (Bash, Read, Write, Edit, Web*) is
   denied. Containment is the absence of capability, not a permission filter.
-- Fixed prompt (`prompts/tier2-system-prompt.md`): machine context baked in
-  (pentester's workstation, weak-signal reputation policy, pwsh-7 rule),
+- Fixed prompt (`prompts/tier2-system-prompt.md`): platform facts only (no
+  owner profile - that comes from `machine_notes` in the config and never
+  outweighs evidence; reputation, hosting ASNs and missing attribution are
+  real signals; embeddable runtimes are judged by their host process),
   data-not-instructions clause, fixed check sequence, strict JSON verdict.
 - Reputation lookups (AbuseIPDB/VT) exist ONLY here, quota-guarded, and
   refuse own/private/CGNAT IPs regardless of what the model asks.
