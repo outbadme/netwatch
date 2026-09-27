@@ -9,6 +9,30 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'netutil.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'identity.psm1')
 
+# Never browser-credited, whatever the config lists (DECISIONS D12): these
+# are runtimes/hosts that ANY program - malware included - can drive, so a
+# genuine signed binary says nothing about who is talking.
+$script:NeverBrowserNames = @(
+    'msedgewebview2', 'node', 'electron', 'python', 'pythonw', 'pwsh', 'powershell',
+    'cmd', 'wscript', 'cscript', 'mshta', 'rundll32', 'regsvr32', 'dllhost', 'svchost',
+    'conhost', 'msbuild', 'installutil', 'java', 'javaw', 'dotnet'
+)
+
+function Get-BrowserCreditNames {
+    # config list minus the names that can never earn browser credit
+    param([Parameter(Mandatory)] $Config)
+    return @(@($Config.classify.browser_attributed_ok) |
+        ForEach-Object { ([string]$_).ToLowerInvariant() } |
+        Where-Object { $_ -and $_ -notin $script:NeverBrowserNames })
+}
+
+function Get-RejectedBrowserNames {
+    # the config entries Get-BrowserCreditNames drops (operator WARN at load)
+    param([Parameter(Mandatory)] $Config)
+    return @(@($Config.classify.browser_attributed_ok) |
+        Where-Object { ([string]$_).ToLowerInvariant() -in $script:NeverBrowserNames })
+}
+
 function Test-HasDestination {
     # entry names at least one destination criterion (else: constraint-only)
     param([Parameter(Mandatory)] $Match)
@@ -55,8 +79,11 @@ function Test-WhitelistMatch {
         return [bool]($hasProc -and $hasPort)   # constraints above already passed
     }
 
-    # destination criteria: any present criterion may match
-    $domain =if ($Conn.domain) { $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
+    # destination criteria: any present criterion may match. Domain criteria
+    # need a DNS-backed name (domain_verified, set by the main loop): a bare
+    # SNI/Host/do-log name is the client's or a local file's claim.
+    $domain = if ($Conn.domain -and $Conn.ContainsKey('domain_verified') -and $Conn.domain_verified) {
+        $Conn.domain.ToLowerInvariant().TrimEnd('.') } else { $null }
     if ($domain -and $m.PSObject.Properties['domains']) {
         if ($domain -in @($m.domains)) { return $true }
     }
@@ -107,7 +134,7 @@ function Get-Classification {
     # browser policy: attributed browser traffic = clean-logged; raw-IP browser
     # traffic stays escalatable (GOAL: DoH churn is unwhitelistable but SNI/DNS
     # attribution must exist)
-    if ($trusted -and $Conn.name.ToLowerInvariant() -in @($Config.classify.browser_attributed_ok)) {
+    if ($trusted -and $Conn.name.ToLowerInvariant() -in (Get-BrowserCreditNames -Config $Config)) {
         if ($Conn.attribution_source -ne 'none' -and $Conn.domain) { return 'browser-attributed' }
     }
     return 'residual'
@@ -203,6 +230,6 @@ function Get-EscalatableKeys {
     return @($result)
 }
 
-Export-ModuleMember -Function Test-WhitelistMatch, Get-Classification,
+Export-ModuleMember -Function Test-WhitelistMatch, Get-Classification, Get-BrowserCreditNames, Get-RejectedBrowserNames,
     Get-ResidualKey, Update-ResidualQueue, Get-EscalatableKeys,
     Remove-ReclassifiedQueueKeys

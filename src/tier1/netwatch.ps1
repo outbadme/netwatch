@@ -36,7 +36,11 @@ try {
     $whitelist = Get-Whitelist -Config $cfg
     $warnUnpinned = {
         # browser credit = any attributed domain for that bare name
-        $u = @(Get-UnpinnedNames -Names @($cfg.classify.browser_attributed_ok) -Whitelist $whitelist)
+        $rej = @(Get-RejectedBrowserNames -Config $cfg)
+        if ($rej.Count) {
+            Write-OpLog -Config $cfg -Level WARN -Message "classify.browser_attributed_ok lists runtimes that never get browser credit (ignored, DECISIONS D12): $($rej -join ', ')"
+        }
+        $u = @(Get-UnpinnedNames -Names (Get-BrowserCreditNames -Config $cfg) -Whitelist $whitelist)
         if ($u.Count) {
             Write-OpLog -Config $cfg -Level WARN -Message "browser names without an identity pin (name-only trust; add process_images): $($u -join ', ')"
         }
@@ -188,6 +192,13 @@ try {
                 }
                 $c.attribution_source = $att.source
                 $c.domain = $att.domain
+                # a DOMAIN whitelist match needs DNS behind the name: SNI and
+                # Host are client-written claims (DECISIONS D12)
+                $c.domain_verified = if ($att.source -in 'dns-pid', 'dns-ip', 'dns-cache') { $true }
+                    elseif ($att.source -in 'sni', 'http-host' -and $att.domain) {
+                        Test-DnsConfirms -Caches $dnsCaches -Ip ([string]$c.raddr) -Domain $att.domain
+                    }
+                    else { $false }
 
                 $class = Get-Classification -Whitelist $whitelist -Conn $c -Config $cfg -HostAddresses $hostAddrs
                 $key = Get-ResidualKey -Conn $c

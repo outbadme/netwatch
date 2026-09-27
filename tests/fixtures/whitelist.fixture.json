@@ -134,10 +134,10 @@
       "evidence": "Synthetic test fixture - NOT shipped, NOT a trust decision."
     },
     {
-      "id": "tailscale-inbound-rdp-own-iphone",
+      "id": "tailscale-inbound-rdp-peer",
       "match": {
         "cidrs": [
-          "100.64.0.21/32"
+          "100.64.0.99/32"
         ],
         "local_ports": [
           3389

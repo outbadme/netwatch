@@ -11,6 +11,7 @@ Import-Module (Join-Path $PSScriptRoot 'netutil.psm1')
 
 $script:ChannelName = 'Microsoft-Windows-DNS-Client/Operational'
 $script:CacheTtlHours = 2
+$script:MaxDomainsPerIp = 32
 
 function Test-DnsEtwAvailable {
     # 'ok' when the channel exists AND is enabled; 'unavailable' otherwise.
@@ -217,7 +218,12 @@ function Update-DnsCaches {
             }
             $entry = $Caches.dns_ip[$ip]
             $entry.expires = $expires
-            if ($e.domain -notin $entry.domains) { $entry.domains.Add($e.domain) }
+            if ($e.domain -notin $entry.domains) {
+                $entry.domains.Add($e.domain)
+                # bounded: random-subdomain floods against one IP must not
+                # grow the list (and the O(n) membership test) without limit
+                if ($entry.domains.Count -gt $script:MaxDomainsPerIp) { $entry.domains.RemoveAt(0) }
+            }
             $Caches.dns_pidip["$($e.pid)|$ip"] = @{ domain = $e.domain; expires = $expires }
         }
     }
@@ -228,6 +234,31 @@ function Update-DnsCaches {
     foreach ($k in @($Caches.dns_pidip.Keys)) {
         if ($Caches.dns_pidip[$k].expires -le $NowUtc) { $Caches.dns_pidip.Remove($k) }
     }
+}
+
+function Test-DnsConfirms {
+    # True when a DNS answer observed on this machine (ETW, any process, or
+    # the OS resolver cache) mapped $Domain to $Ip. SNI and HTTP Host are
+    # written by the client itself: they may only earn a DOMAIN whitelist
+    # match when DNS agrees (post-compromise audit 2026-09-27 - a ClientHello
+    # naming www.microsoft.com toward a C2 IP was whitelisted).
+    param(
+        [Parameter(Mandatory)] [hashtable]$Caches,
+        [Parameter(Mandatory)] [string]$Ip,
+        [Parameter(Mandatory)] [string]$Domain
+    )
+    $canon = ConvertTo-CanonicalIp -Ip $Ip
+    if (-not $canon) { return $false }
+    $d = $Domain.ToLowerInvariant().TrimEnd('.')
+    if ($Caches.dns_ip.ContainsKey($canon)) {
+        foreach ($x in $Caches.dns_ip[$canon].domains) {
+            if (([string]$x).ToLowerInvariant().TrimEnd('.') -eq $d) { return $true }
+        }
+    }
+    if ($Caches.ContainsKey('dns_cache') -and $Caches.dns_cache.ContainsKey($canon)) {
+        if (([string]$Caches.dns_cache[$canon].domain).ToLowerInvariant().TrimEnd('.') -eq $d) { return $true }
+    }
+    return $false
 }
 
 function Resolve-DnsAttribution {
@@ -258,4 +289,4 @@ function Resolve-DnsAttribution {
 
 Export-ModuleMember -Function Test-DnsEtwAvailable, ConvertFrom-DnsQueryResults,
     ConvertFrom-DnsEventXml, Get-DnsBookmark, Set-DnsBookmark, Read-DnsEvents,
-    New-DnsCaches, Update-DnsCaches, Update-DnsClientCache, Resolve-DnsAttribution
+    New-DnsCaches, Update-DnsCaches, Update-DnsClientCache, Resolve-DnsAttribution, Test-DnsConfirms

@@ -20,6 +20,7 @@ function New-Conn {
         command_line = ''; laddr = '192.168.1.10'; lport = 50000
         raddr = '193.57.46.213'; rport = 443; state = 'Established'
         direction = 'outbound'; domain = $null; attribution_source = 'none'
+        domain_verified = $true   # DNS-backed unless a case says otherwise
     }
     foreach ($k in $O.Keys) { $c[$k] = $O[$k] }
     return $c

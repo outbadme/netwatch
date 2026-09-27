@@ -41,10 +41,10 @@ Assert-Equal '192.168.1.10' $c.laddr 'outbound: local = Source'
 Assert-Equal 'sysmon' $c.state 'state marks the event source'
 
 $c = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{
-        Initiated = 'false'; SourceIp = '100.64.0.21'; SourcePort = '55000'
+        Initiated = 'false'; SourceIp = '100.64.0.99'; SourcePort = '55000'
         DestinationIp = '192.168.1.10'; DestinationPort = '3389'; Image = 'C:\Windows\System32\svchost.exe' })
 Assert-Equal 'inbound' $c.direction 'Initiated=false -> inbound'
-Assert-Equal '100.64.0.21' $c.raddr 'inbound: remote = Source'
+Assert-Equal '100.64.0.99' $c.raddr 'inbound: remote = Source'
 Assert-Equal 3389 $c.lport 'inbound: local port = DestinationPort'
 
 $c = ConvertFrom-SysmonNetEventXml -Xml (New-SysmonXml @{ DestinationIp = '::ffff:203.0.113.78'; DestinationIsIpv6 = 'true' })

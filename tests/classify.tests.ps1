@@ -13,6 +13,7 @@ function New-Conn {
         command_line = ''; laddr = '192.168.1.10'; lport = 50000
         raddr = '1.2.3.4'; rport = 443; state = 'Established'
         direction = 'outbound'; domain = $null; attribution_source = 'none'
+        domain_verified = $true   # DNS-backed unless a case says otherwise
     }
     foreach ($k in $O.Keys) { $c[$k] = $O[$k] }
     return $c
@@ -46,11 +47,11 @@ try {
     $c = New-Conn @{ name = 'telegram'; raddr = '8.8.8.8' }
     Assert-False (Test-WhitelistMatch -Entry $tg -Conn $c) 'telegram non-DC IP no match'
 
-    # --- inbound-only entry (iphone RDP seed) --------------------------------
-    $ib = $wl.entries | Where-Object id -eq 'tailscale-inbound-rdp-own-iphone'
-    $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.21'; lport = 3389; rport = 55000; direction = 'inbound' }
-    Assert-True (Test-WhitelistMatch -Entry $ib -Conn $c) 'own iphone inbound RDP matches'
-    $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.21'; lport = 3389; rport = 55000; direction = 'outbound' }
+    # --- inbound-only entry (tailnet peer RDP, fixture) ----------------------
+    $ib = $wl.entries | Where-Object id -eq 'tailscale-inbound-rdp-peer'
+    $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.99'; lport = 3389; rport = 55000; direction = 'inbound' }
+    Assert-True (Test-WhitelistMatch -Entry $ib -Conn $c) 'tailnet peer inbound RDP matches'
+    $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.99'; lport = 3389; rport = 55000; direction = 'outbound' }
     Assert-False (Test-WhitelistMatch -Entry $ib -Conn $c) 'same conn outbound does not match'
     $c = New-Conn @{ name = 'svchost'; raddr = '100.99.99.99'; lport = 3389; rport = 55000; direction = 'inbound' }
     Assert-False (Test-WhitelistMatch -Entry $ib -Conn $c) 'other tailnet peer stays unmatched (escalatable)'
@@ -79,6 +80,17 @@ try {
     Assert-True (Test-WhitelistMatch -Entry $w365 -Conn $c) 'w365 ip+port match'
     $c = New-Conn @{ name = 'msrdc'; raddr = '198.51.100.13'; rport = 443 }
     Assert-False (Test-WhitelistMatch -Entry $w365 -Conn $c) 'w365 wrong port no match'
+
+    # --- a client-written name (SNI/Host) without DNS behind it never earns a
+    # domain match (post-compromise audit: ClientHello 'www.microsoft.com' to a
+    # C2 IP was whitelisted)
+    $ms2 = $wl.entries | Where-Object id -eq 'microsoft-system'
+    $c = New-Conn @{ name = 'svchost'; domain = 'www.microsoft.com'; attribution_source = 'sni'; domain_verified = $false }
+    Assert-False (Test-WhitelistMatch -Entry $ms2 -Conn $c) 'unverified SNI name does not match a domain entry'
+    $c = New-Conn @{ name = 'svchost'; domain = 'www.microsoft.com'; attribution_source = 'http-host'; domain_verified = $false }
+    Assert-False (Test-WhitelistMatch -Entry $ms2 -Conn $c) 'unverified Host header does not match a domain entry'
+    $c = New-Conn @{ name = 'svchost'; domain = 'www.microsoft.com'; attribution_source = 'sni'; domain_verified = $true }
+    Assert-True (Test-WhitelistMatch -Entry $ms2 -Conn $c) 'DNS-confirmed SNI name matches'
 
     # --- constraint-only entry (DO peers on 7680): used to NEVER match -------
     $do = $wl.entries | Where-Object id -eq 'svchost-delivery-optimization-peer'
@@ -138,7 +150,7 @@ try {
         Assert-True ($log -match "'proc-only' is inert") 'process-only entry reported inert'
         Assert-False ($log -match "'do-peer' is inert") 'process+port entry not reported'
         Assert-False ($log -match "'dom' is inert") 'destination entry not reported'
-        $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.21'; lport = 3389; rport = 55000; direction = 'inbound' }
+        $c = New-Conn @{ name = 'svchost'; raddr = '100.64.0.99'; lport = 3389; rport = 55000; direction = 'inbound' }
         $inert = $wl2.entries | Where-Object id -eq 'inbound-rdp-ports-only'
         Assert-False (Test-WhitelistMatch -Entry $inert -Conn $c) 'inert entry never matches'
     }
@@ -155,6 +167,20 @@ try {
     Assert-Equal 'browser-attributed' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'browser with domain'
     $c = New-Conn @{ name = 'msedge'; domain = 'random-site.example'; attribution_source = 'sni' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'unreadable browser image -> no browser credit'
+    Set-SignerProvider $null
+
+    # runtimes any program can drive never get browser credit, even if listed
+    # (DECISIONS D12) - a genuine signed msedgewebview2 says nothing about its host
+    $cfgRt = Get-NetwatchConfig -Path (New-TestConfig -StateRoot $root -Override @{
+            classify = @{ browser_attributed_ok = @('msedge', 'MsEdgeWebView2', 'node'); machine_notes = @() } })
+    Assert-Equal 'msedge' ((Get-BrowserCreditNames -Config $cfgRt) -join ',') 'runtimes dropped from browser credit (case-insensitive)'
+    Assert-Equal 2 @(Get-RejectedBrowserNames -Config $cfgRt).Count 'rejected runtimes reported for the WARN'
+    Set-SignerProvider { param($p) 'Microsoft Corporation' }
+    $wvImg = "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application\140.0.1.2\msedgewebview2.exe"
+    $c = New-Conn @{ name = 'msedgewebview2'; image_path = $wvImg; domain = 'random-site.example'; attribution_source = 'sni' }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfgRt) 'verified WebView2 listed in config still gets no browser credit'
+    $c = New-Conn @{ name = 'node'; domain = 'random-site.example'; attribution_source = 'sni' }
+    Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfgRt) 'node listed in config gets no browser credit'
     Set-SignerProvider $null
     $c = New-Conn @{ name = 'msedge'; domain = $null; attribution_source = 'none' }
     Assert-Equal 'residual' (Get-Classification -Whitelist $wl -Conn $c -Config $cfg) 'browser raw-IP stays escalatable'

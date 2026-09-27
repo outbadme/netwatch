@@ -3,14 +3,20 @@
 # src/tier2/mcp-config.json; creates the state root tree and seeds the live
 # whitelist. Idempotent; safe without admin. Run once at deploy and after
 # moving the repo.
-# Params exist for tests only - production runs take the defaults.
+# Params exist for tests only - production runs take the defaults, except
+# -ResetTrust (DECISIONS D12): drops every trust decision an EXISTING
+# deployment accumulated - live whitelist, suppression cache (prior CLEAN
+# verdicts), proposals, classify.browser_attributed_ok and machine_notes in
+# the generated config. Each file is first copied to <name>.pre-reset-<utc>.
+# Use it on any install that ran on a machine you no longer trust.
 
 #Requires -Version 7.6
 param(
     [string]$StateRoot = [Environment]::ExpandEnvironmentVariables('%LOCALAPPDATA%\netwatch'),
     [string]$ConfigOut,
     [string]$McpConfigOut,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$ResetTrust
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -24,8 +30,28 @@ foreach ($d in '', 'state', 'logs', 'escalations', 'alarms') {
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $StateRoot $d)
 }
 
-# --- live whitelist seed (never overwrites an existing live copy) ------------
+# --- trust reset (explicit only) ----------------------------------------------
 $wlLive = Join-Path $StateRoot 'whitelist.json'
+if ($ResetTrust) {
+    $stamp = [datetime]::UtcNow.ToString('yyyyMMdd-HHmmss')
+    foreach ($f in @($wlLive, (Join-Path $StateRoot 'state\suppression.json'), (Join-Path $StateRoot 'state\proposals.jsonl'))) {
+        if (Test-Path -LiteralPath $f) {
+            Copy-Item -LiteralPath $f -Destination "$f.pre-reset-$stamp"
+            Remove-Item -LiteralPath $f
+            Write-Host "trust reset: $f (backup: $f.pre-reset-$stamp)"
+        }
+    }
+    if (Test-Path -LiteralPath $ConfigOut) {
+        Copy-Item -LiteralPath $ConfigOut -Destination "$ConfigOut.pre-reset-$stamp"
+        $old = Get-Content -LiteralPath $ConfigOut -Raw | ConvertFrom-Json
+        Write-Host "trust reset: browser_attributed_ok [$(@($old.classify.browser_attributed_ok) -join ', ')] -> []; machine_notes cleared (backup: $ConfigOut.pre-reset-$stamp)"
+        $old.classify | Add-Member -NotePropertyName browser_attributed_ok -NotePropertyValue @() -Force
+        $old.classify | Add-Member -NotePropertyName machine_notes -NotePropertyValue @() -Force
+        $old | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ConfigOut -Encoding utf8
+    }
+}
+
+# --- live whitelist seed (never overwrites an existing live copy) ------------
 if (-not (Test-Path -LiteralPath $wlLive)) {
     Copy-Item (Join-Path $repoRoot 'config\whitelist.seed.json') $wlLive
     Write-Host "whitelist seeded -> $wlLive"
